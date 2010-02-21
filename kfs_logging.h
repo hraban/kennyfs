@@ -17,7 +17,7 @@
  */
 
 #define kfs_do_nothing(format, ...) ((void *) (0))
-#define kfs_log(level, fmt, ...) fprintf(stderr, "%s: " fmt, \
+#define kfs_log(level, fmt, ...) fprintf(stderr, "%s: " fmt "\n", \
         level, ## __VA_ARGS__)
 
 #if ! (defined(KFS_LOG_TRACE) \
@@ -57,7 +57,8 @@
          /* More explicit logging (for all levels). */
 #        undef kfs_log
 #        define kfs_log(level, fmt, ...) fprintf(stderr, "[%s] %s:%d %s(): " \
-                fmt, level, __FILE__, __LINE__, __func__, ## __VA_ARGS__)
+                fmt "\n", "kfs_" level, __FILE__, __LINE__, \
+                __func__, ## __VA_ARGS__)
 #      endif
 #    endif
 #  endif

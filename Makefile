@@ -1,6 +1,6 @@
 NAME := kennyfs
 CC := gcc
-CCARGS := -Wall -O0 -g -DNDEBUG
+CCARGS := -Wall -O0 -g
 FUSEARGS := `pkg-config fuse --cflags --libs`
 
 FULLCC := $(CC) $(CCARGS) $(FUSEARGS)

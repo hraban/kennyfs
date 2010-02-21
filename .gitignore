@@ -1,0 +1,6 @@
+# Ignore backup files.
+*~
+# Also ignore object files.
+*.[ao]
+# And vim-swap files.
+.*.swp
