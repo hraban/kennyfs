@@ -42,36 +42,33 @@
 #undef kfs_log
 #define kfs_log(level, fmt, ...) fprintf(stderr, "[%s] %s:%d %s(): " fmt, \
         level, __FILE__, __LINE__, __func__, ## __VA_ARGS__)
-#define kfs_debug(...) kfs_log("DEBUG", __VA_ARGS)
+#define kfs_debug(...) kfs_log("debug", __VA_ARGS__)
 #else
 #define kfs_debug kfs_do_nothing
 #endif
 
 #if KFS_LOGGING_LEVEL <= INFO
-#define kfs_info kfs_log("INFO", __VA_ARGS)
+#define kfs_info(...) kfs_log("info", __VA_ARGS__)
 #else
 #define kfs_info kfs_do_nothing
 #endif
 
 #if KFS_LOGGING_LEVEL <= WARNING
-#define kfs_warning kfs_log("WARNING", __VA_ARGS)
+#define kfs_warning(...) kfs_log("warning", __VA_ARGS__)
 #else
 #define kfs_warning kfs_do_nothing
 #endif
 
 #if KFS_LOGGING_LEVEL <= ERROR
-#define kfs_error kfs_log("ERROR", __VA_ARGS)
+#define kfs_error(...) kfs_log("ERROR", __VA_ARGS__)
 #else
 #define kfs_error kfs_do_nothing
 #endif
 
 #if KFS_LOGGING_LEVEL <= CRITICAL
-#define kfs_critical kfs_log("CRITICAL", __VA_ARGS)
+#define kfs_critical(...) kfs_log("CRITICAL", __VA_ARGS__)
 #else
 #define kfs_critical kfs_do_nothing
 #endif
-
-#undef kfs_do_nothing
-#undef kfs_log
 
 #endif /* _KFS_LOGGING_H */
