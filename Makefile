@@ -2,8 +2,10 @@ NAME := kennyfs
 CC := gcc
 CCARGS := -Wall -O0 -g -Wunused-parameter
 FUSEARGS := `pkg-config fuse --cflags --libs`
+INCLUDES := 
+LINK := 
 
-FULLCC := $(CC) $(CCARGS) $(FUSEARGS)
+FULLCC := $(CC) $(CCARGS) $(FUSEARGS) $(INCLUDES)
 
 .PHONY: all clean
 

@@ -21,7 +21,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <unistd.h>
+#include <utime.h>
 
 #include "kennyfs.h"
 #include "kfs_misc.h"
@@ -108,7 +110,7 @@ kenny_getattr(const char *fusepath, struct stat *stbuf)
         ret = -errno;
     } else {
         KFS_DEBUG("Getattr on %s", fullpath);
-        ret = stat(fullpath, stbuf);
+        ret = lstat(fullpath, stbuf);
         if (ret == -1) {
             KFS_ERROR("stat: %s", strerror(errno));
             ret = -errno;
@@ -136,10 +138,14 @@ kenny_readlink(const char *fusepath, char *buf, size_t size)
     if (fullpath == NULL) {
         ret = -errno;
     } else {
-        ret = readlink(fullpath, buf, size);
+        /* Save room for the \0 byte. */
+        ret = readlink(fullpath, buf, size - 1);
         if (ret == -1) {
             KFS_ERROR("readlink: %s", strerror(errno));
             ret = -errno;
+        } else {
+            buf[ret] = '\0';
+            ret = 0;
         }
         if (fullpath != pathbuf) {
             fullpath = KFS_FREE(fullpath);
@@ -408,6 +414,41 @@ kenny_releasedir(const char *fusepath, struct fuse_file_info *fi)
     return 0;
 }
 
+/**
+ * Update access/modification time.
+ */
+static int
+kenny_utimens(const char *fusepath, const struct timespec tvnano[2])
+{
+    char pathbuf[PATHBUF_SIZE];
+    struct timeval tvmicro[2];
+    int ret = 0;
+    char *fullpath = NULL;
+
+    ret = 0;
+    fullpath = kfs_bufstrcat(pathbuf, myconf.path, fusepath, AR_SIZE(pathbuf));
+    if (fullpath == NULL) {
+        ret = -errno;
+    } else {
+        /* This could also use gnulib.utimens, but gnulib is too big for now. */
+        tvmicro[0].tv_sec = tvnano[0].tv_sec;
+        tvmicro[0].tv_usec = tvnano[0].tv_nsec / 1000;
+        tvmicro[1].tv_sec = tvnano[1].tv_sec;
+        tvmicro[1].tv_usec = tvnano[1].tv_nsec / 1000;
+        ret = utimes(fullpath, tvmicro);
+        if (ret == -1) {
+            KFS_ERROR("removexattr: %s", strerror(errno));
+            ret = -errno;
+        }
+        if (fullpath != pathbuf) {
+            KFS_FREE(fullpath);
+        }
+    }
+
+    return ret;
+}
+
+
 static struct fuse_operations kenny_oper = {
     .getattr = kenny_getattr,
     .readlink = kenny_readlink,
@@ -420,6 +461,7 @@ static struct fuse_operations kenny_oper = {
     .opendir = kenny_opendir,
     .readdir = kenny_readdir,
     .releasedir = kenny_releasedir,
+    .utimens = kenny_utimens,
 };
 
 /**
