@@ -1,11 +1,12 @@
 #ifndef _KFS_MISC_H
 #define _KFS_MISC_H
 
+#include <errno.h>
 #include <string.h>
 
 #define AR_SIZE(ar) (sizeof(ar) / sizeof((ar)[0]))
 
-static int
+static inline int
 min(int x, int y) {
     return x > y ? y : x;
 }
@@ -16,7 +17,7 @@ min(int x, int y) {
  * eventually be freed. Check this by comparing the argument with the return
  * value. If memory allocation fails, NULL is returned and errno is set.
  */
-static char *
+static inline char *
 kfs_bufstrcat(char *buf, const char *part1, const char *part2, size_t bufsize)
 {
     /* Maybe the buffer is too small. */

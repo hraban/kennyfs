@@ -1,4 +1,7 @@
-#define KENNYFS_VERSION "0.0"
+/**
+ * KennyFS backend forwarding everything to a locally mounted POSIX-compliant
+ * directory.
+ */
 
 #define FUSE_USE_VERSION 26
 /* Macro is necessary to get fstatat(). */
@@ -15,7 +18,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <fuse.h>
-#include <fuse_opt.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,39 +27,33 @@
 #include <unistd.h>
 #include <utime.h>
 
-#include "kennyfs.h"
+#include "kfs.h"
 #include "kfs_misc.h"
+#include "kfs_backend_posix.h"
 
-#define KENNYFS_OPT(t, p, v) {t, offsetof(struct kenny_conf, p), v}
+/* Many functions use this macro in allocating a buffer on the stack to build a
+ * full pathname. When it is exceeded more memory is automatically allocated on
+ * the heap. Happens with kfs_bufstrcat().
+ */
 #define PATHBUF_SIZE 256
 
-enum {
-    KEY_HELP,
-    KEY_VERSION,
-};
-
-struct kenny_conf {
-    char *path;
-};
+/*
+ * Types.
+ */
 
 struct kenny_fh {
     DIR *dir;
     int fd;
 };
 
-static struct kenny_conf myconf;
-static struct fuse_opt kenny_opts[] = {
-    KENNYFS_OPT("path=%s", path, 0),
-    FUSE_OPT_KEY("-h", KEY_HELP),
-    FUSE_OPT_KEY("--help", KEY_HELP),
-    FUSE_OPT_KEY("-v", KEY_VERSION),
-    FUSE_OPT_KEY("--version", KEY_VERSION),
-    FUSE_OPT_END
-};
+/*
+ * Globals and statics.
+ */
 
-
-/**
- * ***** Private functions. *****
+static struct kfs_backend_posix_args myconf;
+
+/*
+ * Private functions.
  */
 
 /**
@@ -91,12 +87,9 @@ fh_kenny2fuse(struct kenny_fh *fh)
 }
 
 /*
- * FUSE API
+ * FUSE API.
  */
 
-/**
- * Mirrors all calls to the source dir.
- */
 static int
 kenny_getattr(const char *fusepath, struct stat *stbuf)
 {
@@ -226,7 +219,7 @@ kenny_setxattr(const char *fusepath, const char *name, const char *value, size_t
     if (fullpath == NULL) {
         ret = -errno;
     } else {
-        ret = setxattr(fullpath, name, value, size, flags);
+        ret = lsetxattr(fullpath, name, value, size, flags);
         if (ret == -1) {
             KFS_ERROR("setxattr: %s", strerror(errno));
             ret = -errno;
@@ -251,7 +244,7 @@ kenny_getxattr(const char *fusepath, const char *name, char *value, size_t size)
     if (fullpath == NULL) {
         ret = -errno;
     } else {
-        ret = getxattr(fullpath, name, value, size);
+        ret = lgetxattr(fullpath, name, value, size);
         if (ret == -1) {
             KFS_ERROR("getxattr: %s", strerror(errno));
             ret = -errno;
@@ -276,7 +269,7 @@ kenny_listxattr(const char *fusepath, char *list, size_t size)
     if (fullpath == NULL) {
         ret = -errno;
     } else {
-        ret = listxattr(fullpath, list, size);
+        ret = llistxattr(fullpath, list, size);
         if (ret == -1) {
             KFS_ERROR("listxattr: %s", strerror(errno));
             ret = -errno;
@@ -301,7 +294,7 @@ kenny_removexattr(const char *fusepath, const char *name)
     if (fullpath == NULL) {
         ret = -errno;
     } else {
-        ret = removexattr(fullpath, name);
+        ret = lremovexattr(fullpath, name);
         if (ret == -1) {
             KFS_ERROR("removexattr: %s", strerror(errno));
             ret = -errno;
@@ -448,8 +441,7 @@ kenny_utimens(const char *fusepath, const struct timespec tvnano[2])
     return ret;
 }
 
-
-static struct fuse_operations kenny_oper = {
+static const struct fuse_operations kenny_oper = {
     .getattr = kenny_getattr,
     .readlink = kenny_readlink,
     .open = kenny_open,
@@ -465,64 +457,50 @@ static struct fuse_operations kenny_oper = {
 };
 
 /**
- * Process command line arguments.
+ * Global initialization.
  */
 static int
-kenny_opt_proc(void *data, const char *arg, int key, struct fuse_args *outargs)
+kenny_init(struct kfs_backend_posix_args arg)
 {
-    (void) data;
-    (void) arg;
-
-    switch(key) {
-    case KEY_VERSION:
-        fprintf(stderr, "KennyFS version %s\n", KENNYFS_VERSION);
-        fuse_opt_add_arg(outargs, "--version");
-        fuse_main(outargs->argc, outargs->argv, &kenny_oper, NULL);
-        exit(EXIT_SUCCESS);
-
-    case KEY_HELP:
-        fprintf(stderr,
-                "usage: %s mountpoint [options]\n"
-                "\n"
-                "general options:\n"
-                "    -o opt,[opt...]  mount options\n"
-                "    -h   --help      print help\n"
-                "    -V   --version   print version\n"
-                "\n"
-                "KennyFS options:\n"
-                "    -o path=PATH     path to mirror\n"
-                "\n",
-                outargs->argv[0]);
-        fuse_opt_add_arg(outargs, "-ho");
-        fuse_main(outargs->argc, outargs->argv, &kenny_oper, NULL);
-        exit(EXIT_SUCCESS);
-    }
-
-    return 1;
+    myconf = arg;
+    return 0;
 }
 
-
-/***** Public functions. *****/
-
-int
-main(int argc, char *argv[])
+/*
+ * Get the backend interface.
+ */
+static struct fuse_operations
+kenny_getfuncs(void)
 {
-    int ret = 0;
-    struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
+    return kenny_oper;
+}
 
-    KFS_INFO("Starting KennyFS version %s.", KENNYFS_VERSION);
-    memset(&myconf, 0, sizeof(myconf));
-    ret = fuse_opt_parse(&args, &myconf, kenny_opts, kenny_opt_proc);
-    if (ret == -1 || myconf.path == NULL) {
-        return EXIT_FAILURE;
-    }
-    ret = fuse_main(args.argc, args.argv, &kenny_oper, NULL);
-    fuse_opt_free_args(&args);
-    if (ret != 0) {
-        KFS_WARNING("KennyFS exited with value %d.", ret);
-    } else {
-        KFS_INFO("KennyFS exited succesfully.");
-    }
+/**
+ * Global cleanup.
+ */
+static void
+kenny_halt(void)
+{
+    return;
+}
 
-    return ret;
+static const struct kfs_backend_api kenny_api = {
+    .init = kenny_init,
+    .getfuncs = kenny_getfuncs,
+    .halt = kenny_halt,
+};
+
+/*
+ * Public functions.
+ */
+
+/**
+ * Get the KennyFS API: initialiser, FUSE API getter and cleaner. This function
+ * has the generic KennyFS backend name expected by frontends. Do not put this
+ * in the header-file but extract it with dynamic linking.
+ */
+struct kfs_backend_api
+kenny_getapi(void)
+{
+    return kenny_api;
 }
