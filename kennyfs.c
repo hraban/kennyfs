@@ -1,6 +1,16 @@
 #define KENNYFS_VERSION "0.0"
-#define FUSE_USE_VERSION 26
 
+#define FUSE_USE_VERSION 26
+/* Macro is necessary to get fstatat(). */
+#define _ATFILE_SOURCE
+/* Macro is necessary to get pread(). */
+#define _XOPEN_SOURCE 500
+/* Macro is necessary to get dirfd(). */
+#define _BSD_SOURCE
+/* <attr/xattr.h> needs this header. */
+#include <sys/types.h>
+
+#include <attr/xattr.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -11,12 +21,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <sys/types.h>
 #include <unistd.h>
 
 #include "kennyfs.h"
+#include "kfs_misc.h"
 
 #define KENNYFS_OPT(t, p, v) {t, offsetof(struct kenny_conf, p), v}
+#define PATHBUF_SIZE 256
 
 enum {
     KEY_HELP,
@@ -29,10 +40,9 @@ struct kenny_conf {
 
 struct kenny_fh {
     DIR *dir;
+    int fd;
 };
 
-static const char *kenny_path = "/hello";
-static char *kenny_str = NULL;
 static struct kenny_conf myconf;
 static struct fuse_opt kenny_opts[] = {
     KENNYFS_OPT("path=%s", path, 0),
@@ -47,11 +57,6 @@ static struct fuse_opt kenny_opts[] = {
 /**
  * ***** Private functions. *****
  */
-
-static int
-min(int x, int y) {
-    return x > y ? y : x;
-}
 
 /**
  * Convert FUSE fuse_file_info::fh to struct kenny_fh (typecast). I might be
@@ -83,6 +88,10 @@ fh_kenny2fuse(struct kenny_fh *fh)
     return fusefh;
 }
 
+/*
+ * FUSE API
+ */
+
 /**
  * Mirrors all calls to the source dir.
  */
@@ -90,97 +99,306 @@ static int
 kenny_getattr(const char *fusepath, struct stat *stbuf)
 {
     int ret = 0;
-    int must_malloc = 0;
     /* On-stack buffer for paths of limited length. Otherwise: malloc(). */
-    char pathbuf[512];
-    char *mypath = pathbuf;
+    char pathbuf[PATHBUF_SIZE];
+    char *fullpath = NULL;
 
-    memset(stbuf, 0, sizeof(*stbuf));
-    /* The buffer is too small. */
-    must_malloc = strlen(fusepath) > 512 - 1 - strlen(myconf.path);
-    if (must_malloc) {
-        /* Allocate space for full mirrored pathname: base + path + \0. */
-        mypath = KFS_MALLOC(strlen(fusepath) + strlen(myconf.path) + 1);
-        if (mypath == NULL) {
-            kfs_error("malloc(): %s", strerror(errno));
-            return -errno;
-        }
-    }
-    strcpy(mypath, myconf.path); /* Careful: buffer overflow prone. */
-    strcpy(mypath + strlen(myconf.path), fusepath); /* Re: careful. */
-    kfs_debug("mypath = %s", mypath);
-
-    ret = stat(mypath, stbuf);
-    if (ret == -1) {
+    fullpath = kfs_bufstrcat(pathbuf, myconf.path, fusepath, AR_SIZE(pathbuf));
+    if (fullpath == NULL) {
         ret = -errno;
-    }
-
-    if (must_malloc) {
-        mypath = KFS_FREE(mypath);
+    } else {
+        KFS_DEBUG("Getattr on %s", fullpath);
+        ret = stat(fullpath, stbuf);
+        if (ret == -1) {
+            KFS_ERROR("stat: %s", strerror(errno));
+            ret = -errno;
+        }
+        if (fullpath != pathbuf) {
+            fullpath = KFS_FREE(fullpath);
+        }
     }
 
     return ret;
 }
 
 /**
+ * Read the target of a symlink.
+ */
+static int
+kenny_readlink(const char *fusepath, char *buf, size_t size)
+{
+    char pathbuf[PATHBUF_SIZE];
+    ssize_t ret = 0;
+    char *fullpath = NULL;
+
+    ret = 0;
+    fullpath = kfs_bufstrcat(pathbuf, myconf.path, fusepath, AR_SIZE(pathbuf));
+    if (fullpath == NULL) {
+        ret = -errno;
+    } else {
+        ret = readlink(fullpath, buf, size);
+        if (ret == -1) {
+            KFS_ERROR("readlink: %s", strerror(errno));
+            ret = -errno;
+        }
+        if (fullpath != pathbuf) {
+            fullpath = KFS_FREE(fullpath);
+        }
+    }
+
+    return ret;
+}
+
+static int
+kenny_open(const char *fusepath, struct fuse_file_info *fi)
+{
+    char pathbuf[PATHBUF_SIZE];
+    char *fullpath = NULL;
+    int ret = 0;
+
+    ret = 0;
+    fullpath = kfs_bufstrcat(pathbuf, myconf.path, fusepath, AR_SIZE(pathbuf));
+    if (fullpath == NULL) {
+        ret = -errno;
+    } else {
+        ret = open(fullpath, fi->flags);
+        if (ret == -1) {
+            KFS_ERROR("open: %s", strerror(errno));
+            ret = -errno;
+        } else {
+            /* Store file descriptor in FUSE file handle. */
+            fi->fh = ret;
+            ret = 0;
+        }
+        if (fullpath != pathbuf) {
+            KFS_FREE(fullpath);
+        }
+    }
+
+    return ret;
+}
+
+/**
+ * Read the contents of given file.
+ * TODO: Check compliance of return value with API.
+ */
+static int
+kenny_read(const char *fusepath, char *buf, size_t size, off_t offset, struct
+        fuse_file_info *fi)
+{
+    (void) fusepath;
+
+    int ret = 0;
+    ssize_t numread = 0;
+
+    ret = 0;
+    numread = pread(fi->fh, buf, size, offset);
+    if (numread == -1) {
+        KFS_ERROR("pread: %s", strerror(errno));
+        ret = -errno;
+    } else {
+        ret = numread;
+    }
+
+    return ret;
+}
+
+/*
+ * Extended attributes.
+ */
+
+static int
+kenny_setxattr(const char *fusepath, const char *name, const char *value, size_t
+        size, int flags)
+{
+    char pathbuf[PATHBUF_SIZE];
+    int ret = 0;
+    char *fullpath = NULL;
+
+    ret = 0;
+    fullpath = kfs_bufstrcat(pathbuf, myconf.path, fusepath, AR_SIZE(pathbuf));
+    if (fullpath == NULL) {
+        ret = -errno;
+    } else {
+        ret = setxattr(fullpath, name, value, size, flags);
+        if (ret == -1) {
+            KFS_ERROR("setxattr: %s", strerror(errno));
+            ret = -errno;
+        }
+        if (fullpath != pathbuf) {
+            KFS_FREE(fullpath);
+        }
+    }
+
+    return ret;
+}
+
+static int
+kenny_getxattr(const char *fusepath, const char *name, char *value, size_t size)
+{
+    char pathbuf[PATHBUF_SIZE];
+    int ret = 0;
+    char *fullpath = NULL;
+
+    ret = 0;
+    fullpath = kfs_bufstrcat(pathbuf, myconf.path, fusepath, AR_SIZE(pathbuf));
+    if (fullpath == NULL) {
+        ret = -errno;
+    } else {
+        ret = getxattr(fullpath, name, value, size);
+        if (ret == -1) {
+            KFS_ERROR("getxattr: %s", strerror(errno));
+            ret = -errno;
+        }
+        if (fullpath != pathbuf) {
+            KFS_FREE(fullpath);
+        }
+    }
+
+    return ret;
+}
+
+static int
+kenny_listxattr(const char *fusepath, char *list, size_t size)
+{
+    char pathbuf[PATHBUF_SIZE];
+    ssize_t ret = 0;
+    char *fullpath = NULL;
+
+    ret = 0;
+    fullpath = kfs_bufstrcat(pathbuf, myconf.path, fusepath, AR_SIZE(pathbuf));
+    if (fullpath == NULL) {
+        ret = -errno;
+    } else {
+        ret = listxattr(fullpath, list, size);
+        if (ret == -1) {
+            KFS_ERROR("listxattr: %s", strerror(errno));
+            ret = -errno;
+        }
+        if (fullpath != pathbuf) {
+            KFS_FREE(fullpath);
+        }
+    }
+
+    return ret;
+}
+
+static int
+kenny_removexattr(const char *fusepath, const char *name)
+{
+    char pathbuf[PATHBUF_SIZE];
+    int ret = 0;
+    char *fullpath = NULL;
+
+    ret = 0;
+    fullpath = kfs_bufstrcat(pathbuf, myconf.path, fusepath, AR_SIZE(pathbuf));
+    if (fullpath == NULL) {
+        ret = -errno;
+    } else {
+        ret = removexattr(fullpath, name);
+        if (ret == -1) {
+            KFS_ERROR("removexattr: %s", strerror(errno));
+            ret = -errno;
+        }
+        if (fullpath != pathbuf) {
+            KFS_FREE(fullpath);
+        }
+    }
+
+    return ret;
+}
+
+/*
  * Directories.
  */
 
 static int
-kenny_opendir(const char *path, struct fuse_file_info *fi)
+kenny_opendir(const char *fusepath, struct fuse_file_info *fi)
 {
     struct kenny_fh *fh = NULL;
+    int ret = 0;
+    char pathbuf[PATHBUF_SIZE];
+    char *fullpath = NULL;
 
+    ret = 0;
     fh = KFS_MALLOC(sizeof(*fh));
-    if (fh == NULL) {
-        kfs_error("malloc(): %s", strerror(errno));
-        return -errno;
+    fullpath = kfs_bufstrcat(pathbuf, myconf.path, fusepath, AR_SIZE(pathbuf));
+    if (fh == NULL || fullpath == NULL) {
+        KFS_ERROR("malloc: %s", strerror(errno));
+        ret = -errno;
+    } else {
+        KFS_DEBUG("Opening directory %s.", fullpath);
+        fi->fh = fh_kenny2fuse(fh);
+        fh->dir = opendir(fullpath);
+        if (fh->dir == NULL) {
+            KFS_ERROR("opendir: %s", strerror(errno));
+            ret = -errno;
+        }
+        if (fullpath != pathbuf) {
+            fullpath = KFS_FREE(fullpath);
+        }
     }
-    fi->fh = fh_kenny2fuse(fh);
-    fh->dir = opendir(path);
-    if (fh->dir == NULL) {
-        kfs_error("opendir(): %s", strerror(errno));
-        return -errno;
-    }
-    return 0;
+
+    return ret;
 }
 
+/**
+ * List directory contents.
+ */
 static int
-kenny_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+kenny_readdir(const char *fusepath, void *buf, fuse_fill_dir_t filler,
         off_t offset, struct fuse_file_info *fi)
 {
+    (void) offset;
+
     struct stat mystat;
     struct kenny_fh *fh = NULL;
     struct dirent *mydirent = NULL;
-    int ret;
+    int read_more = 0;
+    int ret = 0;
 
+    KFS_DEBUG("Reading elements from dir %s", fusepath);
     fh = fh_fuse2kenny(fi->fh);
-    mydirent = readdir(fh->dir);
-    if (mydirent == NULL) {
-        kfs_error("readdir(): %s", strerror(errno));
-        return -errno;
+    read_more = 1;
+    while (read_more) {
+        errno = 0;
+        /* Get an entry. */
+        mydirent = readdir(fh->dir);
+        if (mydirent == NULL) {
+            if (errno != 0) {
+                KFS_ERROR("readdir: %s", strerror(errno));
+                ret = -errno;
+            }
+            read_more = 0;
+            break;
+        }
+        /* Stat that entry. This is not (yet) POSIX compliant. */
+        ret = fstatat(dirfd(fh->dir), mydirent->d_name, &mystat, 0);
+        if (ret == -1) {
+            KFS_ERROR("fstatat: %s", strerror(errno));
+            return -errno;
+        }
+        /* Add it to the return-buffer. */
+        ret = filler(buf, mydirent->d_name, &mystat, 0);
+        if (ret == 1) {
+            return -ENOBUFS;
+        }
     }
-    ret = fstat(dirfd(fh->dir), &mystat);
-    if (ret == -1) {
-        kfs_error("fstat(): %s", strerror(errno));
-        return -errno;
-    }
-    ret = filler(buf, mydirent->d_name, &mystat, offset);
-    return -ret;
+    return ret;
 }
 
 static int
-kenny_releasedir(const char *path, struct fuse_file_info *fi)
+kenny_releasedir(const char *fusepath, struct fuse_file_info *fi)
 {
-    (void) path;
+    (void) fusepath;
 
     struct kenny_fh *fh = NULL;
-    int ret;
+    int ret = 0;
 
     fh = fh_fuse2kenny(fi->fh);
     ret = closedir(fh->dir);
     if (ret == -1) {
-        kfs_error("closedir(): %s", strerror(errno));
+        KFS_ERROR("closedir: %s", strerror(errno));
         return -errno;
     }
     fh->dir = NULL;
@@ -190,49 +408,18 @@ kenny_releasedir(const char *path, struct fuse_file_info *fi)
     return 0;
 }
 
-static int
-kenny_open(const char *path, struct fuse_file_info *fi)
-{
-    if (strcmp(path, kenny_path) != 0) {
-        return -ENOENT;
-    }
-
-    if ((fi->flags & 3) != O_RDONLY) {
-        return -EACCES;
-    }
-
-    return 0;
-}
-
-static int
-kenny_read(const char *path, char *buf, size_t size, off_t offset,
-        struct fuse_file_info *fi)
-{
-    /* Unused arguments. */
-    (void) *fi;
-
-    size_t len = 0;
-
-    if (strcmp(path, kenny_path) != 0) {
-        return -ENOENT;
-    }
-
-    len = strlen(kenny_str);
-    if (offset >= len) {
-        return 0;
-    }
-    memcpy(buf, kenny_str + offset, min(size, len - offset));
-
-    return size;
-}
-
 static struct fuse_operations kenny_oper = {
     .getattr = kenny_getattr,
+    .readlink = kenny_readlink,
+    .open = kenny_open,
+    .read = kenny_read,
+    .setxattr = kenny_setxattr,
+    .getxattr = kenny_getxattr,
+    .listxattr = kenny_listxattr,
+    .removexattr = kenny_removexattr,
     .opendir = kenny_opendir,
     .readdir = kenny_readdir,
     .releasedir = kenny_releasedir,
-    .open = kenny_open,
-    .read = kenny_read,
 };
 
 /**
@@ -241,6 +428,9 @@ static struct fuse_operations kenny_oper = {
 static int
 kenny_opt_proc(void *data, const char *arg, int key, struct fuse_args *outargs)
 {
+    (void) data;
+    (void) arg;
+
     switch(key) {
     case KEY_VERSION:
         fprintf(stderr, "KennyFS version %s\n", KENNYFS_VERSION);
@@ -278,19 +468,18 @@ main(int argc, char *argv[])
     int ret = 0;
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
 
-    kfs_info("Starting KennyFS version %s.", KENNYFS_VERSION);
+    KFS_INFO("Starting KennyFS version %s.", KENNYFS_VERSION);
     memset(&myconf, 0, sizeof(myconf));
     ret = fuse_opt_parse(&args, &myconf, kenny_opts, kenny_opt_proc);
     if (ret == -1 || myconf.path == NULL) {
         return EXIT_FAILURE;
     }
-    kenny_str = myconf.path;
     ret = fuse_main(args.argc, args.argv, &kenny_oper, NULL);
     fuse_opt_free_args(&args);
     if (ret != 0) {
-        kfs_warning("KennyFS exited with value %d.", ret);
+        KFS_WARNING("KennyFS exited with value %d.", ret);
     } else {
-        kfs_info("KennyFS exited succesfully.");
+        KFS_INFO("KennyFS exited succesfully.");
     }
 
     return ret;
