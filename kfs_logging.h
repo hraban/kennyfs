@@ -1,6 +1,11 @@
 #ifndef _KFS_LOGGING_H
 #define _KFS_LOGGING_H
 
+#include <assert.h>
+#include <stdio.h>
+
+#include "kfs.h"
+
 /**
  * Defines logging functions for the KennyFS project. Provides the following
  * levels:
@@ -15,6 +20,8 @@
  * functions are defined. If NDEBUG is defined the default logging level is
  * WARNING, otherwise it is DEBUG.
  */
+
+#define KFS_ASSERT assert
 
 #define kfs_do_nothing(format, ...) ((void *) (0))
 #define kfs_log(level, fmt, ...) fprintf(stderr, level ": " fmt "\n", ## \

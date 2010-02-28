@@ -13,17 +13,17 @@
 #include <stdlib.h>
 
 #include "kfs.h"
+#include "kfs_api.h"
 #include "kfs_misc.h"
-#include "kfs_backend_posix.h"
 
 #define KENNYFS_OPT(t, p, v) {t, offsetof(struct kenny_conf, p), v}
 
 /**
- * Configuration variables for this frontend.
+ * Configuration variables.
  */
 struct kenny_conf {
     char *path;
-    char *backend;
+    char *brick;
 };
 
 enum {
@@ -36,7 +36,7 @@ enum {
  */
 static struct fuse_opt kenny_opts[] = {
     KENNYFS_OPT("path=%s", path, 0),
-    KENNYFS_OPT("backend=%s", backend, 0),
+    KENNYFS_OPT("brick=%s", brick, 0),
     FUSE_OPT_KEY("-h", KEY_HELP),
     FUSE_OPT_KEY("--help", KEY_HELP),
     FUSE_OPT_KEY("-v", KEY_VERSION),
@@ -44,7 +44,7 @@ static struct fuse_opt kenny_opts[] = {
     FUSE_OPT_END
 };
 
-/**
+/*
  * ***** Private functions. *****
  */
 
@@ -86,18 +86,44 @@ kenny_opt_proc(void *data, const char *arg, int key, struct fuse_args *outargs)
     return 1;
 }
 
-/***** Public functions. *****/
+/**
+ * Start up the POSIX backend. Returns 0 on success, -1 on error.
+ */
+static int
+prepare_posix_backend(struct kfs_brick_api *api, char *path)
+{
+    struct kfs_brick_arg *arg = NULL;
+    int ret = 0;
+
+    KFS_ASSERT(api != NULL && path != NULL);
+    /* Prepare for initialization of the brick: construct its argument. */
+    arg = api->makearg(path);
+    if (arg == NULL) {
+        KFS_ERROR("Preparing brick failed.");
+        ret = -1;
+    } else {
+        /* Arguments ready: now initialize the brick. */
+        ret = api->init(arg);
+        if (ret != 0) {
+            KFS_ERROR("Brick could not start: code %d.", ret);
+            ret = -1;
+        }
+        /* Initialization is over, free the argument. */
+        arg = kfs_brick_delarg(arg);
+    }
+
+    return ret;
+}
 
 int
 main(int argc, char *argv[])
 {
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
     struct kenny_conf conf;
-    struct kfs_backend_posix_args posixbackend_args;
-    struct kfs_backend_api posixbackend_api;
+    struct kfs_brick_api posixbrick_api;
     int ret = 0;
     struct fuse_operations kenny_oper;
-    kfs_backend_getapi_f posixbackend_getapi_f = NULL;
+    kfs_brick_getapi_f posixbrick_getapi_f = NULL;
     void *lib_handle = NULL;
     char *errorstr = NULL;
 
@@ -106,17 +132,17 @@ main(int argc, char *argv[])
     /* Parse the command line. */
     memset(&conf, 0, sizeof(conf));
     ret = fuse_opt_parse(&args, &conf, kenny_opts, kenny_opt_proc);
-    if (conf.path == NULL || conf.backend == NULL) {
+    if (conf.path == NULL || conf.brick == NULL) {
         KFS_ERROR("Error parsing commandline. See %s --help.", argv[0]);
         ret = -1;
     }
     if (ret == 0) {
-        /* Load the backend. */
-        lib_handle = dlopen(conf.backend, RTLD_NOW | RTLD_LOCAL);
+        /* Load the brick. */
+        lib_handle = dlopen(conf.brick, RTLD_NOW | RTLD_LOCAL);
         if (lib_handle != NULL) {
-            posixbackend_getapi_f = dlsym(lib_handle, "kenny_getapi");
-            if (posixbackend_getapi_f != NULL) {
-                posixbackend_api = posixbackend_getapi_f();
+            posixbrick_getapi_f = dlsym(lib_handle, "kenny_getapi");
+            if (posixbrick_getapi_f != NULL) {
+                posixbrick_api = posixbrick_getapi_f();
             } else {
                 ret = -1;
             }
@@ -125,42 +151,26 @@ main(int argc, char *argv[])
         }
         errorstr = dlerror();
         if (errorstr != NULL) {
-            KFS_ERROR("Loading backend failed: %s", errorstr);
+            KFS_ERROR("Loading brick failed: %s", errorstr);
         }
     }
     if (ret == 0) {
-        /* Get the KennyFS API getter. */
-        if (posixbackend_getapi_f == NULL) {
-            errorstr = dlerror();
-            if (errorstr != NULL) {
-                KFS_ERROR("Loading backend failed: %s", errorstr);
-            }
-            ret = -1;
-        } else {
-        }
+        ret = prepare_posix_backend(&posixbrick_api, conf.path);
     }
     if (ret == 0) {
-        /* Initialize the backend. */
-        posixbackend_args.path = conf.path;
-        ret = posixbackend_api.init(posixbackend_args);
-        if (ret != 0) {
-            KFS_ERROR("Backend failed with code %d.", ret);
-        }
-    }
-    if (ret == 0) {
-        /* Run the backend and start FUSE. */
-        kenny_oper = posixbackend_api.getfuncs();
+        /* Run the brick and start FUSE. */
+        kenny_oper = posixbrick_api.getfuncs();
         ret = fuse_main(args.argc, args.argv, &kenny_oper, NULL);
         /* Clean everything up. */
         fuse_opt_free_args(&args);
-        posixbackend_api.halt();
+        posixbrick_api.halt();
         dlclose(lib_handle);
     }
     if (ret == 0) {
         KFS_INFO("KennyFS exited succesfully.");
+        exit(EXIT_SUCCESS);
     } else {
         KFS_WARNING("KennyFS exited with value %d.", ret);
+        exit(EXIT_FAILURE);
     }
-
-    exit(ret);
 }
