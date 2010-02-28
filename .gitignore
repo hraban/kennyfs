@@ -2,5 +2,10 @@
 *~
 # Also ignore object files.
 *.[ao]
+*.so
+*.so.?
+*.so.?.?
 # And vim-swap files.
 .*.swp
+# Name of main binary.
+kennyfs
