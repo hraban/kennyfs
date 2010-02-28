@@ -35,13 +35,15 @@ kfs_bufstrcat(char *buf, const char *part1, const char *part2, size_t bufsize)
 {
     size_t len1 = 0;
     size_t len2 = 0;
+    size_t lentotal = 0;
 
     KFS_ASSERT(buf != NULL && part1 != NULL && part2 != NULL);
     len1 = strlen(part1);
     len2 = strlen(part2);
+    lentotal = len1 + len2;
     /* Maybe the buffer is too small. */
-    if (len1 + len2 >= bufsize) {
-        buf = KFS_MALLOC(len1 + len2 + 1);
+    if (lentotal >= bufsize) {
+        buf = KFS_MALLOC(lentotal + 1);
         if (buf == NULL) {
             KFS_ERROR("malloc: %s", strerror(errno));
         }
@@ -53,6 +55,7 @@ kfs_bufstrcat(char *buf, const char *part1, const char *part2, size_t bufsize)
         }
         memcpy(buf + len1, part2, len2);
     }
+    buf[lentotal] = '\0';
 
     return buf;
 }

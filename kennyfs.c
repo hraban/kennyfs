@@ -140,7 +140,7 @@ main(int argc, char *argv[])
         /* Load the brick. */
         lib_handle = dlopen(conf.brick, RTLD_NOW | RTLD_LOCAL);
         if (lib_handle != NULL) {
-            posixbrick_getapi_f = dlsym(lib_handle, "kenny_getapi");
+            posixbrick_getapi_f = dlsym(lib_handle, "kfs_brick_getapi");
             if (posixbrick_getapi_f != NULL) {
                 posixbrick_api = posixbrick_getapi_f();
             } else {

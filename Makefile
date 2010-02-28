@@ -1,6 +1,6 @@
 CC ?= gcc
 LINKER ?= $(CC)
-FSLINK ?= ln -s
+FSLINK ?= ln -fs
 NAME := kennyfs
 CCARGS := -Wall -O0 -g -Wunused-parameter -fPIC `pkg-config fuse --cflags`
 CCINCARGS :=
@@ -23,7 +23,7 @@ $(NAME): $(OFILES)
 	$(FULLLINK) -o $@ $(OFILES)
 
 lib%.so: %.o
-	$(FULLLINK) -shared -Wl,-soname,$@.0 $< -o $@.0.0
+	$(FULLLINK) -shared -Wl,-soname,$@.0 $< -o $@.0.0 $(OFILES)
 	$(FSLINK) $@.0.0 $@
 	$(FSLINK) $@.0.0 $@.0
 

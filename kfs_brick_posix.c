@@ -528,9 +528,9 @@ kfs_brick_posix_arg2char(char **buf, struct kfs_brick_posix_arg *arg)
     *buf = kfs_strcpy(arg->path);
     serialized = KFS_MALLOC(len);
     if (serialized == NULL) {
-        len = 0;
+        len = -1;
     } else {
-        len = strlen(arg->path);
+        len = strlen(arg->path) + 1; /* The additional '\0' byte. */
     }
 
     return len;
@@ -639,7 +639,7 @@ static const struct kfs_brick_api kenny_api = {
  * in the header-file but extract it with dynamic linking.
  */
 struct kfs_brick_api
-kfs_brick_posix_getapi(void)
+kfs_brick_getapi(void)
 {
     return kenny_api;
 }
