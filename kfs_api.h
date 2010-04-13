@@ -3,7 +3,7 @@
 
 /* Typedef size_t is needed. */
 #if __STDC_VERSION__ >= 199901L
-/* In C99 stddef.h is a legal (lighter) substitute to get this typedef. */
+/* In C99 stddef.h is a legal (lighter) substitute to get size_t. */
 #  include "stddef.h"
 #else
 #  include "stdlib.h"
@@ -94,4 +94,4 @@ struct kfs_brick_api {
  */
 typedef struct kfs_brick_api (* kfs_brick_getapi_f)(void);
 
-#endif
+#endif /* _KFS_API_H */

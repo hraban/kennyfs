@@ -8,7 +8,7 @@
 #include "kfs_logging.h"
 #include "kfs_memory.h"
 
-#define AR_SIZE(ar) (sizeof(ar) / sizeof((ar)[0]))
+#define NUMELEM(ar) (sizeof(ar) / sizeof((ar)[0]))
 
 inline int min(int x, int y);
 inline int max(int x, int y);

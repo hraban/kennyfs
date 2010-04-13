@@ -104,7 +104,7 @@ kenny_getattr(const char *fusepath, struct stat *stbuf)
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
 
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, AR_SIZE(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         ret = -errno;
     } else {
@@ -133,7 +133,7 @@ kenny_readlink(const char *fusepath, char *buf, size_t size)
     char *fullpath = NULL;
 
     ret = 0;
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, AR_SIZE(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         ret = -errno;
     } else {
@@ -162,7 +162,7 @@ kenny_open(const char *fusepath, struct fuse_file_info *fi)
     int ret = 0;
 
     ret = 0;
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, AR_SIZE(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         ret = -errno;
     } else {
@@ -221,7 +221,7 @@ kenny_setxattr(const char *fusepath, const char *name, const char *value, size_t
     char *fullpath = NULL;
 
     ret = 0;
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, AR_SIZE(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         ret = -errno;
     } else {
@@ -246,7 +246,7 @@ kenny_getxattr(const char *fusepath, const char *name, char *value, size_t size)
     char *fullpath = NULL;
 
     ret = 0;
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, AR_SIZE(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         ret = -errno;
     } else {
@@ -271,7 +271,7 @@ kenny_listxattr(const char *fusepath, char *list, size_t size)
     char *fullpath = NULL;
 
     ret = 0;
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, AR_SIZE(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         ret = -errno;
     } else {
@@ -296,7 +296,7 @@ kenny_removexattr(const char *fusepath, const char *name)
     char *fullpath = NULL;
 
     ret = 0;
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, AR_SIZE(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         ret = -errno;
     } else {
@@ -327,11 +327,12 @@ kenny_opendir(const char *fusepath, struct fuse_file_info *fi)
 
     ret = 0;
     fh = KFS_MALLOC(sizeof(*fh));
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, AR_SIZE(pathbuf));
     if (fh == NULL || fullpath == NULL) {
         KFS_ERROR("malloc: %s", strerror(errno));
         ret = -errno;
     } else {
+        fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath,
+                NUMELEM(pathbuf));
         KFS_DEBUG("Opening directory %s.", fullpath);
         fi->fh = fh_kenny2fuse(fh);
         fh->dir = opendir(fullpath);
@@ -425,7 +426,7 @@ kenny_utimens(const char *fusepath, const struct timespec tvnano[2])
     char *fullpath = NULL;
 
     ret = 0;
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, AR_SIZE(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         ret = -errno;
     } else {
