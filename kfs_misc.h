@@ -1,5 +1,5 @@
-#ifndef _KFS_MISC_H
-#define _KFS_MISC_H
+#ifndef KFS_MISC_H
+#define KFS_MISC_H
 
 #include <errno.h>
 #include <string.h>

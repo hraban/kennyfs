@@ -606,10 +606,10 @@ kenny_init(struct kfs_brick_arg *generic)
 /*
  * Get the backend interface.
  */
-static struct fuse_operations
+static const struct fuse_operations *
 kenny_getfuncs(void)
 {
-    return kenny_oper;
+    return &kenny_oper;
 }
 
 /**

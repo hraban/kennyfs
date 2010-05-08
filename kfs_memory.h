@@ -1,5 +1,5 @@
-#ifndef _KFS_MEMORY_H
-#define _KFS_MEMORY_H
+#ifndef KFS_MEMORY_H
+#define KFS_MEMORY_H
 
 /* TODO: Is there a lighter header file for malloc/free? */
 #include <stdlib.h>

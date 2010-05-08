@@ -1,5 +1,5 @@
-#ifndef _KFS_LOGGING_H
-#define _KFS_LOGGING_H
+#ifndef KFS_LOGGING_H
+#define KFS_LOGGING_H
 
 #include <assert.h>
 #include <stdio.h>
@@ -23,26 +23,26 @@
 
 #define KFS_ASSERT assert
 
-#define kfs_do_nothing(format, ...) ((void *) (0))
+#define kfs_do_nothing(format, ...) ((void) (0))
 #define kfs_log(level, fmt, ...) fprintf(stderr, level ": " fmt "\n", ## \
         __VA_ARGS__)
 
+/* Default logging level depends on NDEBUG macro. */
 #if ! (defined(KFS_LOG_TRACE) \
     || defined(KFS_LOG_DEBUG) \
     || defined(KFS_LOG_INFO) \
     || defined(KFS_LOG_WARNING) \
     || defined(KFS_LOG_ERROR) \
     || defined(KFS_LOG_SILENT))
-#ifdef NDEBUG
-#  define KFS_LOG_WARNING
-#else
-#  define KFS_LOG_DEBUG
-#endif
+#  ifdef NDEBUG
+#    define KFS_LOG_WARNING
+#  else
+#    define KFS_LOG_DEBUG
+#  endif
 #endif
 
 
 /* Start by defining all debug macros as being in use. */
-#define kfs_trace kfs_do_nothing
 #define KFS_DEBUG kfs_do_nothing
 #define KFS_INFO kfs_do_nothing
 #define KFS_WARNING kfs_do_nothing
@@ -61,11 +61,13 @@
 #      ifndef KFS_LOG_INFO
 #        undef KFS_DEBUG
 #        define KFS_DEBUG(...) kfs_log("debug", __VA_ARGS__)
-         /* More explicit logging (for all levels). */
-#        undef kfs_log
-#        define kfs_log(level, fmt, ...) fprintf(stderr, "[kfs_" level "] " \
-                 __FILE__ ":%d %s: " fmt "\n", __LINE__, __func__, ## \
-                __VA_ARGS__)
+#        if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
+           /* More explicit logging (for all levels) in C99. */
+#          undef kfs_log
+#          define kfs_log(level, fmt, ...) fprintf(stderr, "[kfs_" level "] " \
+                   __FILE__ ":%d %s: " fmt "\n", __LINE__, __func__, ## \
+                   __VA_ARGS__)
+#        endif
 #      endif
 #    endif
 #  endif

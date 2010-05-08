@@ -1,8 +1,8 @@
-#ifndef _KFS_API_H
-#define _KFS_API_H
+#ifndef KFS_API_H
+#define KFS_API_H
 
 /* Typedef size_t is needed. */
-#if __STDC_VERSION__ >= 199901L
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
 /* In C99 stddef.h is a legal (lighter) substitute to get size_t. */
 #  include "stddef.h"
 #else
@@ -76,8 +76,8 @@ typedef struct kfs_brick_arg * (* kfs_brick_makearg_f)();
  * argument struct after the call to the init function returns.
  */
 typedef int (* kfs_brick_init_f)(struct kfs_brick_arg *arg);
-/** Function to obtain the FUSE callback handlers for this brick. */
-typedef struct fuse_operations (* kfs_brick_getfuncs_f)(void);
+/** Function to obtain pointer to FUSE callback handlers for this brick. */
+typedef const struct fuse_operations * (* kfs_brick_getfuncs_f)(void);
 /** Function that shuts down the brick (at least until the next init()). */
 typedef void (* kfs_brick_halt_f)(void);
 

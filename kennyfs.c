@@ -122,7 +122,7 @@ main(int argc, char *argv[])
     struct kenny_conf conf;
     struct kfs_brick_api posixbrick_api;
     int ret = 0;
-    struct fuse_operations kenny_oper;
+    const struct fuse_operations *kenny_oper = NULL;
     kfs_brick_getapi_f posixbrick_getapi_f = NULL;
     void *lib_handle = NULL;
     char *errorstr = NULL;
@@ -160,7 +160,7 @@ main(int argc, char *argv[])
     if (ret == 0) {
         /* Run the brick and start FUSE. */
         kenny_oper = posixbrick_api.getfuncs();
-        ret = fuse_main(args.argc, args.argv, &kenny_oper, NULL);
+        ret = fuse_main(args.argc, args.argv, kenny_oper, NULL);
         /* Clean everything up. */
         fuse_opt_free_args(&args);
         posixbrick_api.halt();
