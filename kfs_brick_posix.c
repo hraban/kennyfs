@@ -10,6 +10,9 @@
 #define _XOPEN_SOURCE 500
 /* Macro is necessary to get dirfd(). */
 #define _BSD_SOURCE
+
+#include "kfs_brick_posix.h"
+
 /* <attr/xattr.h> needs this header. */
 #include <sys/types.h>
 
@@ -29,7 +32,6 @@
 
 #include "kfs.h"
 #include "kfs_api.h"
-#include "kfs_brick_posix.h"
 #include "kfs_misc.h"
 
 /* Many functions use this macro in allocating a buffer on the stack to build a
@@ -73,9 +75,11 @@ fh_fuse2kenny(uint64_t fh)
 {
     struct kenny_fh *kfh = NULL;
 
+    KFS_ENTER();
+
     memcpy(&kfh, &fh, min(sizeof(kfh), sizeof(fh)));
 
-    return kfh;
+    KFS_RETURN(kfh);
 }
 
 /**
@@ -87,9 +91,11 @@ fh_kenny2fuse(struct kenny_fh *fh)
 {
     uint64_t fusefh = 0;
 
+    KFS_ENTER();
+
     memcpy(&fusefh, &fh, min(sizeof(fusefh), sizeof(fh)));
 
-    return fusefh;
+    KFS_RETURN(fusefh);
 }
 
 /*
@@ -103,6 +109,8 @@ kenny_getattr(const char *fusepath, struct stat *stbuf)
     /* On-stack buffer for paths of limited length. Otherwise: malloc(). */
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
+
+    KFS_ENTER();
 
     fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
@@ -119,7 +127,7 @@ kenny_getattr(const char *fusepath, struct stat *stbuf)
         }
     }
 
-    return ret;
+    KFS_RETURN(ret);
 }
 
 /**
@@ -131,6 +139,8 @@ kenny_readlink(const char *fusepath, char *buf, size_t size)
     char pathbuf[PATHBUF_SIZE];
     ssize_t ret = 0;
     char *fullpath = NULL;
+
+    KFS_ENTER();
 
     ret = 0;
     fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
@@ -151,7 +161,7 @@ kenny_readlink(const char *fusepath, char *buf, size_t size)
         }
     }
 
-    return ret;
+    KFS_RETURN(ret);
 }
 
 static int
@@ -160,6 +170,8 @@ kenny_open(const char *fusepath, struct fuse_file_info *fi)
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
     int ret = 0;
+
+    KFS_ENTER();
 
     ret = 0;
     fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
@@ -180,7 +192,7 @@ kenny_open(const char *fusepath, struct fuse_file_info *fi)
         }
     }
 
-    return ret;
+    KFS_RETURN(ret);
 }
 
 /**
@@ -196,6 +208,8 @@ kenny_read(const char *fusepath, char *buf, size_t size, off_t offset, struct
     int ret = 0;
     ssize_t numread = 0;
 
+    KFS_ENTER();
+
     ret = 0;
     numread = pread(fi->fh, buf, size, offset);
     if (numread == -1) {
@@ -205,7 +219,7 @@ kenny_read(const char *fusepath, char *buf, size_t size, off_t offset, struct
         ret = numread;
     }
 
-    return ret;
+    KFS_RETURN(ret);
 }
 
 /*
@@ -219,6 +233,8 @@ kenny_setxattr(const char *fusepath, const char *name, const char *value, size_t
     char pathbuf[PATHBUF_SIZE];
     int ret = 0;
     char *fullpath = NULL;
+
+    KFS_ENTER();
 
     ret = 0;
     fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
@@ -235,7 +251,7 @@ kenny_setxattr(const char *fusepath, const char *name, const char *value, size_t
         }
     }
 
-    return ret;
+    KFS_RETURN(ret);
 }
 
 static int
@@ -244,6 +260,8 @@ kenny_getxattr(const char *fusepath, const char *name, char *value, size_t size)
     char pathbuf[PATHBUF_SIZE];
     int ret = 0;
     char *fullpath = NULL;
+
+    KFS_ENTER();
 
     ret = 0;
     fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
@@ -260,7 +278,7 @@ kenny_getxattr(const char *fusepath, const char *name, char *value, size_t size)
         }
     }
 
-    return ret;
+    KFS_RETURN(ret);
 }
 
 static int
@@ -269,6 +287,8 @@ kenny_listxattr(const char *fusepath, char *list, size_t size)
     char pathbuf[PATHBUF_SIZE];
     ssize_t ret = 0;
     char *fullpath = NULL;
+
+    KFS_ENTER();
 
     ret = 0;
     fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
@@ -285,7 +305,7 @@ kenny_listxattr(const char *fusepath, char *list, size_t size)
         }
     }
 
-    return ret;
+    KFS_RETURN(ret);
 }
 
 static int
@@ -294,6 +314,8 @@ kenny_removexattr(const char *fusepath, const char *name)
     char pathbuf[PATHBUF_SIZE];
     int ret = 0;
     char *fullpath = NULL;
+
+    KFS_ENTER();
 
     ret = 0;
     fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
@@ -310,7 +332,7 @@ kenny_removexattr(const char *fusepath, const char *name)
         }
     }
 
-    return ret;
+    KFS_RETURN(ret);
 }
 
 /*
@@ -324,6 +346,8 @@ kenny_opendir(const char *fusepath, struct fuse_file_info *fi)
     int ret = 0;
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
+
+    KFS_ENTER();
 
     ret = 0;
     fh = KFS_MALLOC(sizeof(*fh));
@@ -345,7 +369,7 @@ kenny_opendir(const char *fusepath, struct fuse_file_info *fi)
         }
     }
 
-    return ret;
+    KFS_RETURN(ret);
 }
 
 /**
@@ -362,6 +386,8 @@ kenny_readdir(const char *fusepath, void *buf, fuse_fill_dir_t filler,
     struct dirent *mydirent = NULL;
     int read_more = 0;
     int ret = 0;
+
+    KFS_ENTER();
 
     KFS_DEBUG("Reading elements from dir %s", fusepath);
     fh = fh_fuse2kenny(fi->fh);
@@ -382,15 +408,16 @@ kenny_readdir(const char *fusepath, void *buf, fuse_fill_dir_t filler,
         ret = fstatat(dirfd(fh->dir), mydirent->d_name, &mystat, 0);
         if (ret == -1) {
             KFS_ERROR("fstatat: %s", strerror(errno));
-            return -errno;
+            KFS_RETURN(-errno);
         }
         /* Add it to the return-buffer. */
         ret = filler(buf, mydirent->d_name, &mystat, 0);
         if (ret == 1) {
-            return -ENOBUFS;
+            KFS_RETURN(-ENOBUFS);
         }
     }
-    return ret;
+
+    KFS_RETURN(ret);
 }
 
 static int
@@ -401,17 +428,21 @@ kenny_releasedir(const char *fusepath, struct fuse_file_info *fi)
     struct kenny_fh *fh = NULL;
     int ret = 0;
 
+    KFS_ENTER();
+
     fh = fh_fuse2kenny(fi->fh);
     ret = closedir(fh->dir);
     if (ret == -1) {
         KFS_ERROR("closedir: %s", strerror(errno));
-        return -errno;
+        ret = -errno;
+    } else {
+        fh->dir = NULL;
+        fh = KFS_FREE(fh);
+        fi->fh = 0;
+        ret = 0;
     }
-    fh->dir = NULL;
-    fh = KFS_FREE(fh);
-    fi->fh = 0;
 
-    return 0;
+    KFS_RETURN(ret);
 }
 
 /**
@@ -424,6 +455,8 @@ kenny_utimens(const char *fusepath, const struct timespec tvnano[2])
     struct timeval tvmicro[2];
     int ret = 0;
     char *fullpath = NULL;
+
+    KFS_ENTER();
 
     ret = 0;
     fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
@@ -445,7 +478,7 @@ kenny_utimens(const char *fusepath, const struct timespec tvnano[2])
         }
     }
 
-    return ret;
+    KFS_RETURN(ret);
 }
 
 static const struct fuse_operations kenny_oper = {
@@ -472,6 +505,8 @@ private_makearg(char *path)
 {
     struct kfs_brick_posix_arg *arg = NULL;
 
+    KFS_ENTER();
+
     KFS_ASSERT(path != NULL);
     arg = KFS_MALLOC(sizeof(*arg));
     if (arg == NULL) {
@@ -484,7 +519,7 @@ private_makearg(char *path)
         }
     }
 
-    return arg;
+    KFS_RETURN(arg);
 }
 
 /**
@@ -493,11 +528,13 @@ private_makearg(char *path)
 static struct kfs_brick_posix_arg *
 private_delarg(struct kfs_brick_posix_arg *arg)
 {
+    KFS_ENTER();
+
     KFS_ASSERT(arg != NULL && arg->path != NULL);
     arg->path = KFS_FREE(arg->path);
     arg = KFS_FREE(arg);
 
-    return arg;
+    KFS_RETURN(arg);
 }
 
 /**
@@ -508,33 +545,39 @@ kfs_brick_posix_char2arg(char *buf, size_t len)
 {
     struct kfs_brick_posix_arg *arg = NULL;
 
+    KFS_ENTER();
+
     KFS_ASSERT(buf != NULL);
     KFS_ASSERT(buf[len - 1] == '\0');
     arg = private_makearg(buf);
 
-    return arg;
+    KFS_RETURN(arg);
 }
 
 /**
  * Serialize an argument to a character array. Returns the size of the new
- * buffer, which must, eventually, be freed. Returns -1 on error.
+ * buffer, which must, eventually, be freed. Returns -1 on error, returns the
+ * size of the buffer on success.
  */
 static ssize_t
-kfs_brick_posix_arg2char(char **buf, struct kfs_brick_posix_arg *arg)
+kfs_brick_posix_arg2char(char **buf, const struct kfs_brick_posix_arg *arg)
 {
-    ssize_t len = 0; 
+    ssize_t len = 0;
     char *serialized = NULL;
 
+    KFS_ENTER();
+
     KFS_ASSERT(arg != NULL && buf != NULL);
-    *buf = kfs_strcpy(arg->path);
+    len = strlen(arg->path) + 1; /* +1 for the additional '\0' byte. */
     serialized = KFS_MALLOC(len);
     if (serialized == NULL) {
         len = -1;
     } else {
-        len = strlen(arg->path) + 1; /* The additional '\0' byte. */
+        serialized = memcpy(serialized, arg->path, len);
+        *buf = serialized;
     }
 
-    return len;
+    KFS_RETURN(len);
 }
 
 /**
@@ -549,6 +592,8 @@ kenny_makearg(char *path)
     char *serial_buf = NULL;
     struct kfs_brick_posix_arg *arg_specific = NULL;
     struct kfs_brick_arg *arg_generic = NULL;
+
+    KFS_ENTER();
 
     KFS_ASSERT(path != NULL);
     arg_generic = NULL;
@@ -578,7 +623,7 @@ kenny_makearg(char *path)
         arg_generic->next_args = NULL;
     }
 
-    return arg_generic;
+    KFS_RETURN(arg_generic);
 }
 
 /**
@@ -588,6 +633,8 @@ static int
 kenny_init(struct kfs_brick_arg *generic)
 {
     int ret = 0;
+
+    KFS_ENTER();
 
     KFS_ASSERT(generic != NULL);
     KFS_ASSERT(generic->payload != NULL && generic->payload_size > 0);
@@ -600,7 +647,7 @@ kenny_init(struct kfs_brick_arg *generic)
         ret = -1;
     }
 
-    return ret;
+    KFS_RETURN(ret);
 }
 
 /*
@@ -609,7 +656,9 @@ kenny_init(struct kfs_brick_arg *generic)
 static const struct fuse_operations *
 kenny_getfuncs(void)
 {
-    return &kenny_oper;
+    KFS_ENTER();
+
+    KFS_RETURN(&kenny_oper);
 }
 
 /**
@@ -618,9 +667,11 @@ kenny_getfuncs(void)
 static void
 kenny_halt(void)
 {
+    KFS_ENTER();
+
     myconf = private_delarg(myconf);
 
-    return;
+    KFS_RETURN();
 }
 
 static const struct kfs_brick_api kenny_api = {
@@ -639,8 +690,10 @@ static const struct kfs_brick_api kenny_api = {
  * has the generic KennyFS backend name expected by frontends. Do not put this
  * in the header-file but extract it with dynamic linking.
  */
-struct kfs_brick_api
+const struct kfs_brick_api
 kfs_brick_getapi(void)
 {
-    return kenny_api;
+    KFS_ENTER();
+
+    KFS_RETURN(kenny_api);
 }

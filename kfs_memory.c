@@ -1,18 +1,43 @@
+#include "kfs_memory.h"
+
+#include <errno.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "kfs.h"
 #include "kfs_logging.h"
-#include "kfs_memory.h"
+
+/**
+ * Minimalistic wrapper around syscall malloc().
+ */
+inline void *
+kfs_malloc(size_t s)
+{
+    void *p = NULL;
+
+    KFS_ASSERT(s >= 0);
+    p = malloc(s);
+    if (p == NULL) {
+        KFS_ERROR("malloc: %s", strerror(errno));
+    } else {
+        KFS_DEBUG("Allocated %u bytes of memory at %p.", s, p);
+    }
+
+    return p;
+}
 
 /**
  * Minimalistic wrapper around syscall free(). TODO: mangle the entire array to
- * catch bugs (accessing free()d memory) early.
+ * catch bugs (accessing free()d memory) early. Another nice test would be
+ * strict checking of arguments with values ever returned by kfs_malloc.
  */
 inline void *
 kfs_free(void *p)
 {
+    KFS_DEBUG("Freeing %p.", p);
     KFS_ASSERT(p != NULL);
     free(p);
+
     return NULL;
 }
 
@@ -25,5 +50,6 @@ inline void *
 kfs_realloc(void *p, size_t size)
 {
     KFS_ASSERT(p != NULL);
+
     return realloc(p, size);
 }

@@ -3,26 +3,27 @@
 
 #define KFS_VERSION "0.0"
 
-#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
-  /* "inline" is a keyword */
-#else
-#  define inline /* nothing */
+/* Do not use the inline keyword outside C99. */
+#if !defined(__STDC_VERSION__) || __STDC_VERSION__ < 199901L
+#  define inline
 #endif
 
 /* TODO: This could use some nice indenting to represent the call depth. */
 #define KFS_ENTER() ((void) (0))
-#define KFS_RETURN(ret) return(ret)
+#define KFS_RETURN(ret) return ret
 #ifdef KFS_LOG_TRACE
 #  include "kfs_logging.h"
-#  if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
+#  if defined(__GNUC__) || \
+      defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
 #    undef KFS_ENTER
 #    undef KFS_RETURN
-#    define KFS_ENTER() kfs_log("trace", ">> %s()", __func__)
-#    define KFS_RETURN(ret) do { \
-                                kfs_log("trace", "<< %s(): %d", __func__, ret);\
-                                return(ret); \
-                            } while (0)
+     /* Function name is already printed by kfs_log in trace mode. */
+#    define KFS_ENTER() kfs_log("trace", "enter")
+#    define KFS_RETURN(ret) do { kfs_log("trace", "return"); return ret; \
+                               } while (0)
 #  endif
 #endif
+
+typedef unsigned int uint;
 
 #endif

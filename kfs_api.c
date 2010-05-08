@@ -3,11 +3,12 @@
  * different parts of a KennyFS system, called ``bricks''.
  */
 
+#include "kfs_api.h"
+
 #include <errno.h>
 #include <string.h>
 
 #include "kfs.h"
-#include "kfs_api.h"
 #include "kfs_logging.h"
 #include "kfs_memory.h"
 #include "kfs_misc.h"

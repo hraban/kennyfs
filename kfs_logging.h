@@ -61,8 +61,9 @@
 #      ifndef KFS_LOG_INFO
 #        undef KFS_DEBUG
 #        define KFS_DEBUG(...) kfs_log("debug", __VA_ARGS__)
-#        if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
-           /* More explicit logging (for all levels) in C99. */
+#        if defined(__GNUC__) || \
+            defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
+           /* More explicit logging (for all levels) in C99 and GCC. */
 #          undef kfs_log
 #          define kfs_log(level, fmt, ...) fprintf(stderr, "[kfs_" level "] " \
                    __FILE__ ":%d %s: " fmt "\n", __LINE__, __func__, ## \

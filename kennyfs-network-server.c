@@ -31,25 +31,18 @@ struct kenny_conf {
 };
 
 /**
- * Listen for incoming connections and handle them.
+ * Create a socket that listens for incoming TCP connections on given port.
  */
 static int
-start_daemon(int port, const struct fuse_operations *kenny_oper)
+create_listen_socket(int port)
 {
-    (void) kenny_oper;
     const int yes = 1;
     struct sockaddr_in a;
     const struct protoent *pe = NULL;
-    fd_set readset;
-    int ret = 0;
-    int mysock = 0;
-    int nfds = 0;
+    int listen_sock = 0;
     int protonum = 0;
+    int ret = 0;
 
-    KFS_ENTER();
-
-    ret = 0;
-    FD_ZERO(&readset);
     /* Create the socket, set its type and options. */
     pe = getprotobyname("tcp");
     if (pe == NULL) {
@@ -57,21 +50,21 @@ start_daemon(int port, const struct fuse_operations *kenny_oper)
     } else {
         protonum = pe->p_proto;
     }
-    mysock = socket(AF_INET, SOCK_STREAM, protonum);
-    if (mysock == -1) {
+    listen_sock = socket(AF_INET, SOCK_STREAM, protonum);
+    if (listen_sock == -1) {
         KFS_ERROR("socket: %s", strerror(errno));
         KFS_RETURN(-1);
     }
-    ret = setsockopt(mysock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+    ret = setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
     if (ret == 0) {
         /* Bind it to a local address and port. */
         memset(&a, 0, sizeof(a));
         a.sin_port = htons(port);
         a.sin_family = AF_INET;
-        ret = bind(mysock, (struct sockaddr *) &a, sizeof(a));
+        ret = bind(listen_sock, (struct sockaddr *) &a, sizeof(a));
         if (ret == 0) {
             /* Indicate willigness to accept incoming connections. */
-            ret = listen(mysock, 10);
+            ret = listen(listen_sock, 10);
             if (ret == -1) {
                 KFS_ERROR("listen: %s", strerror(errno));
             }
@@ -82,36 +75,66 @@ start_daemon(int port, const struct fuse_operations *kenny_oper)
         KFS_ERROR("setsockopt: %s", strerror(errno));
     }
     if (ret == -1) {
-        ret = close(mysock);
+        ret = close(listen_sock);
         if (ret == -1) {
             KFS_ERROR("close: %s", strerror(errno));
         }
+        ret = -1;
+    } else {
+        ret = listen_sock;
+    }
+
+    KFS_RETURN(ret);
+}
+
+/**
+ * Listen for incoming connections and handle them.
+ */
+static int
+start_daemon(int port, const struct fuse_operations *kenny_oper)
+{
+    (void) kenny_oper;
+    fd_set readset;
+    int ret = 0;
+    /* Socket listening for incoming connections. */
+    int listen_sock = 0;
+    int nfds = 0;
+
+    KFS_ENTER();
+
+    ret = 0;
+    FD_ZERO(&readset);
+    listen_sock = create_listen_socket(port);
+    if (listen_sock == -1) {
         KFS_RETURN(-1);
     }
-    nfds = mysock + 1;
-    FD_SET(mysock, &readset);
+    FD_SET(listen_sock, &readset);
+    nfds = listen_sock + 1;
     ret = select(nfds, &readset, NULL, NULL, NULL);
+    KFS_ERROR("TEST2");
     if (ret == -1) {
         KFS_ERROR("select: %s", strerror(errno));
-        ret = close(mysock);
+        ret = close(listen_sock);
         if (ret == -1) {
             KFS_ERROR("close: %s", strerror(errno));
         }
         KFS_RETURN(-1);
     }
-    if (FD_ISSET(mysock, &readset)) {
+    if (FD_ISSET(listen_sock, &readset)) {
+        /* Handle new incoming connection. */
         size_t addrsize = 0;
         struct sockaddr_in client_address;
 
         addrsize = sizeof(client_address);
         memset(&client_address, 0, addrsize);
-        ret = accept(mysock, (struct sockaddr *) &client_address, &addrsize);
+        ret = accept(listen_sock, (struct sockaddr *) &client_address,
+                &addrsize);
         if (ret == -1) {
             KFS_ERROR("accept: %s", strerror(errno));
         } else {
             KFS_DEBUG("Succesfully accepted connection.");
         }
-        ret = close(mysock);
+        ret = close(listen_sock);
         if (ret == -1) {
             KFS_ERROR("close: %s", strerror(errno));
         }

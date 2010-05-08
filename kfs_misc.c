@@ -2,9 +2,10 @@
  * Some utility functions.
  */
 
+#include "kfs_misc.h"
+
 #include "kfs.h"
 #include "kfs_memory.h"
-#include "kfs_misc.h"
 
 inline int
 min(int x, int y)
@@ -37,6 +38,8 @@ kfs_bufstrcat(char *buf, const char *part1, const char *part2, size_t bufsize)
     size_t len2 = 0;
     size_t lentotal = 0;
 
+    KFS_ENTER();
+
     KFS_ASSERT(buf != NULL && part1 != NULL && part2 != NULL);
     len1 = strlen(part1);
     len2 = strlen(part2);
@@ -57,7 +60,7 @@ kfs_bufstrcat(char *buf, const char *part1, const char *part2, size_t bufsize)
     }
     buf[lentotal] = '\0';
 
-    return buf;
+    KFS_RETURN(buf);
 }
 
 /**
@@ -69,12 +72,14 @@ kfs_strcpy(const char *src)
     size_t len = 0;
     char *dest = NULL;
 
+    KFS_ENTER();
+
     KFS_ASSERT(src != NULL);
-    len = strlen(src);
+    len = strlen(src) + 1; /* +1 for the trailing '\0'. */
     dest = KFS_MALLOC(len);
     if (dest != NULL) {
         dest = memcpy(dest, src, len);
     }
 
-    return dest;
+    KFS_RETURN(dest);
 }
