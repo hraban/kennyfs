@@ -27,61 +27,97 @@
 struct kenny_conf {
     char *path;
     char *brick;
-    int port;
+    char *port;
 };
+
+/**
+ * Close a socket, print a message on error. Returns -1 on failure, 0 on
+ * success.
+ */
+static int
+close_socket(int sockfd)
+{
+    int ret = 0;
+
+    KFS_ENTER();
+
+    KFS_ASSERT(sockfd >= 0);
+    /* TODO: shutdown(2) here, also? */
+#if 0
+    ret = shutdown(sockfd, SHUT_RDWR);
+    if (ret == -1 && errno != ENOTCONN) {
+        KFS_ERROR("shutdown: %s", strerror(errno));
+    } else {
+#endif
+        ret = close(sockfd);
+        if (ret == -1) {
+            KFS_ERROR("close: %s", strerror(errno));
+        }
+#if 0
+    }
+#endif
+
+    KFS_RETURN(ret);
+}
 
 /**
  * Create a socket that listens for incoming TCP connections on given port.
  */
 static int
-create_listen_socket(int port)
+create_listen_socket(const char *port)
 {
     const int yes = 1;
-    struct sockaddr_in a;
-    const struct protoent *pe = NULL;
+    struct addrinfo hints;
+    struct addrinfo *ai_list = NULL;
+    struct addrinfo *aip = NULL;
     int listen_sock = 0;
-    int protonum = 0;
     int ret = 0;
 
-    /* Create the socket, set its type and options. */
-    pe = getprotobyname("tcp");
-    if (pe == NULL) {
-        protonum = 0;
-    } else {
-        protonum = pe->p_proto;
-    }
-    listen_sock = socket(AF_INET, SOCK_STREAM, protonum);
-    if (listen_sock == -1) {
-        KFS_ERROR("socket: %s", strerror(errno));
+    KFS_ENTER();
+
+    /* Set requirements for listening address. */
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC; /* IPv4 or IPv6 */
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE;
+    ret = getaddrinfo(NULL, port, &hints, &ai_list);
+    if (ret != 0) {
+        KFS_ERROR("getaddrinfo: %s", gai_strerror(ret));
         KFS_RETURN(-1);
     }
-    ret = setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
-    if (ret == 0) {
-        /* Bind it to a local address and port. */
-        memset(&a, 0, sizeof(a));
-        a.sin_port = htons(port);
-        a.sin_family = AF_INET;
-        ret = bind(listen_sock, (struct sockaddr *) &a, sizeof(a));
-        if (ret == 0) {
-            /* Indicate willigness to accept incoming connections. */
-            ret = listen(listen_sock, 10);
-            if (ret == -1) {
-                KFS_ERROR("listen: %s", strerror(errno));
-            }
-        } else {
-            KFS_ERROR("bind: %s", strerror(errno));
+    /* Create a listening socket. */
+    for (aip = ai_list; aip != NULL; aip = aip->ai_next) {
+        listen_sock = socket(aip->ai_family, aip->ai_socktype,
+                aip->ai_protocol);
+        if (listen_sock == -1) {
+            continue;
         }
-    } else {
-        KFS_ERROR("setsockopt: %s", strerror(errno));
-    }
-    if (ret == -1) {
-        ret = close(listen_sock);
+        ret = setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &yes,
+                sizeof(yes));
         if (ret == -1) {
-            KFS_ERROR("close: %s", strerror(errno));
+            close_socket(listen_sock); /* Errors are ignored. */
+            continue;
         }
+        ret = bind(listen_sock, aip->ai_addr, aip->ai_addrlen);
+        if (ret == -1) {
+            close_socket(listen_sock); /* Errors are ignored. */
+            continue;
+        }
+        /* Socket was succesfully created and bound to. */
+        break;
+    }
+    freeaddrinfo(ai_list);
+    if (aip == NULL) {
+        KFS_ERROR("Could not bind to port %s.", port);
         ret = -1;
     } else {
-        ret = listen_sock;
+        /* Indicate willigness to accept incoming connections. */
+        ret = listen(listen_sock, 10);
+        if (ret == -1) {
+            KFS_ERROR("listen: %s", strerror(errno));
+        } else {
+            ret = listen_sock;
+        }
     }
 
     KFS_RETURN(ret);
@@ -91,52 +127,67 @@ create_listen_socket(int port)
  * Listen for incoming connections and handle them.
  */
 static int
-start_daemon(int port, const struct fuse_operations *kenny_oper)
+run_daemon(char *port, const struct fuse_operations *kenny_oper)
 {
     (void) kenny_oper;
+
+    fd_set allsocks;
     fd_set readset;
-    int ret = 0;
+    struct sockaddr_in client_address;
+    size_t addrsize = 0;
     /* Socket listening for incoming connections. */
     int listen_sock = 0;
+    int newsock = 0;
     int nfds = 0;
+    int ret = 0;
+    int i = 0;
 
     KFS_ENTER();
 
     ret = 0;
+    FD_ZERO(&allsocks);
     FD_ZERO(&readset);
     listen_sock = create_listen_socket(port);
     if (listen_sock == -1) {
         KFS_RETURN(-1);
     }
-    FD_SET(listen_sock, &readset);
-    nfds = listen_sock + 1;
-    ret = select(nfds, &readset, NULL, NULL, NULL);
-    KFS_ERROR("TEST2");
-    if (ret == -1) {
-        KFS_ERROR("select: %s", strerror(errno));
-        ret = close(listen_sock);
+    FD_SET(listen_sock, &allsocks);
+    nfds = listen_sock;
+    for (;;) {
+        /* Input all sockets to select(). */
+        readset = allsocks;
+        ret = select(nfds + 1, &readset, NULL, NULL, NULL);
         if (ret == -1) {
-            KFS_ERROR("close: %s", strerror(errno));
+            KFS_ERROR("select: %s", strerror(errno));
+            close_socket(listen_sock);
+            break;
         }
-        KFS_RETURN(-1);
-    }
-    if (FD_ISSET(listen_sock, &readset)) {
-        /* Handle new incoming connection. */
-        size_t addrsize = 0;
-        struct sockaddr_in client_address;
-
-        addrsize = sizeof(client_address);
-        memset(&client_address, 0, addrsize);
-        ret = accept(listen_sock, (struct sockaddr *) &client_address,
-                &addrsize);
-        if (ret == -1) {
-            KFS_ERROR("accept: %s", strerror(errno));
-        } else {
-            KFS_DEBUG("Succesfully accepted connection.");
-        }
-        ret = close(listen_sock);
-        if (ret == -1) {
-            KFS_ERROR("close: %s", strerror(errno));
+        /* Check all possible sockets to see if there is pending data. */
+        /* TODO: Efficiency: only check sockets that are in use. */
+        for (i = 0; i <= nfds; i++) {
+            if (!FD_ISSET(i, &readset)) {
+                /* No pending data to be read from this socket. */
+                continue;
+            }
+            if (i == listen_sock) {
+                /* New incoming connection on listening socket. */
+                addrsize = sizeof(client_address);
+                memset(&client_address, 0, addrsize);
+                newsock = accept(listen_sock,
+                        (struct sockaddr *) &client_address, &addrsize);
+                if (newsock == -1) {
+                    KFS_ERROR("accept: %s", strerror(errno));
+                    KFS_WARNING("Could not accept new connection.");
+                } else {
+                    KFS_INFO("Succesfully accepted connection.");
+                    FD_SET(newsock, &allsocks);
+                    nfds = max(newsock, nfds);
+                }
+            } else {
+                /* Pending data on existing connection. */
+                /* TODO: handle. */
+                KFS_DEBUG("Data available from client.");
+            }
         }
     }
 
@@ -191,7 +242,7 @@ main(int argc, char *argv[])
     if (argc == 4) {
         conf.brick = argv[1];
         conf.path = argv[2];
-        conf.port = atoi(argv[3]);
+        conf.port = argv[3];
     } else {
         KFS_ERROR("Error parsing commandline.");
         ret = -1;
@@ -220,7 +271,7 @@ main(int argc, char *argv[])
         if (ret == 0) {
             /* Run the brick and start the network daemon. */
             kenny_oper = brick_api.getfuncs();
-            ret = start_daemon(conf.port, kenny_oper);
+            ret = run_daemon(conf.port, kenny_oper);
             /* Clean everything up. */
             brick_api.halt();
         }
