@@ -31,6 +31,67 @@ struct kenny_conf {
 };
 
 /**
+ * Node in a linked list of connected network clients.
+ */
+typedef struct client_node {
+    struct client_node *next;
+    unsigned int written;
+    int sockfd;
+    char *writebuf;
+} *clientp_t;
+
+/** The start of the protocol: sent whenever a new client connects. */
+const char SOP_STRING[] = "poep\n";
+
+/*
+ * List of all connected clients.
+ */
+/** The first client in the list. This pointer almost never changes. */
+static clientp_t clientlist_head = NULL;
+/** The last client that connected. This pointer often changes. */
+static clientp_t clientlist_tail = NULL;
+
+/**
+ * Process a new incoming connection.
+ */
+static int
+new_client(int sockfd)
+{
+    clientp_t client = NULL;
+    ssize_t syscallret = 0;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    ret = 0;
+    client = KFS_MALLOC(sizeof(*client));
+    if (client == NULL) {
+        ret = -1;
+    } else {
+        /* First characters sent are the start of protocol string. */
+        client->written = 0;
+        client->writebuf = kfs_strcpy(SOP_STRING);
+        if (client->writebuf == NULL) {
+            ret = -1;
+        } else {
+            /* Add new client to the list of connected clients. */
+            if (clientlist_head == NULL) {
+                KFS_ASSERT(clientlist_tail == NULL);
+                clientlist_head = client;
+                clientlist_tail = client;
+            } else {
+                KFS_ASSERT(clientlist_tail != NULL);
+                clientlist_tail->next = client;
+                clientlist_tail = client;
+            }
+            ret = 0;
+        }
+    }
+
+    KFS_RETURN(ret);
+}
+
+/**
  * Close a socket, print a message on error. Returns -1 on failure, 0 on
  * success.
  */
@@ -179,9 +240,12 @@ run_daemon(char *port, const struct fuse_operations *kenny_oper)
                     KFS_ERROR("accept: %s", strerror(errno));
                     KFS_WARNING("Could not accept new connection.");
                 } else {
-                    KFS_INFO("Succesfully accepted connection.");
-                    FD_SET(newsock, &allsocks);
-                    nfds = max(newsock, nfds);
+                    ret = new_client(newsock);
+                    if (ret == 0) {
+                        KFS_INFO("Succesfully accepted connection.");
+                        FD_SET(newsock, &allsocks);
+                        nfds = max(newsock, nfds);
+                    }
                 }
             } else {
                 /* Pending data on existing connection. */
