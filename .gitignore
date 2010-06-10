@@ -7,5 +7,6 @@
 *.so.?.?
 # And vim-swap files.
 .*.swp
-# Name of main binary.
+# Names of main binary.
 kennyfs
+kennyfs-network-server

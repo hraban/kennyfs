@@ -36,7 +36,7 @@ struct kenny_conf {
 struct client_node {
     struct client_node *next;
     /** Start of the buffer for received, non-processed chars. */
-    char readbuf_start[BUF_LEN];
+    char *readbuf_start;
     /** End of the buffer for received, non-processed chars. */
     char *readbuf_end;
     /** First of received chars that need processing. */
@@ -44,7 +44,7 @@ struct client_node {
     /** Last to-be-processed char, + 1 (ie: if head==tail all is processed). */
     char *readbuf_tail;
     /** Start of the buffer for chars that need to be sent to client.. */
-    char writebuf_start[BUF_LEN];
+    char *writebuf_start;
     /** End of the buffer for chars that need to be sent to client. */
     char *writebuf_end;
     /** First of the chars that need to be sent to client. */
@@ -55,10 +55,10 @@ struct client_node {
 };
 typedef struct client_node *client_t;
 
+/** The size of per-client read and write buffers. */
+static const int BUF_LEN = 1;
 /** The start of the protocol: sent whenever a new client connects. */
 static const char SOP_STRING[] = "poep\n";
-/** The size of per-client read and write buffers. */
-static const size_t BUF_LEN = 1;
 /** The first client in the list. This pointer almost never changes. */
 static client_t clientlist_head = NULL;
 /** The last client that connected. This pointer often changes. */
@@ -71,9 +71,8 @@ static client_t clientlist_tail = NULL;
  * by this function).
  */
 static int
-send_msg(client_t c, const char *msg, size_t msglen);
+send_msg(client_t c, const char *msg, size_t msglen)
 {
-    int ret = 0;
     /* Space left in the write buffer. */
     size_t freebuflen = 0;
     /* Contigious space left in the write buffer. */
@@ -128,7 +127,6 @@ static int
 new_client(int sockfd)
 {
     client_t client = NULL;
-    ssize_t syscallret = 0;
     int ret = 0;
 
     KFS_ENTER();
@@ -156,13 +154,14 @@ new_client(int sockfd)
     client->writebuf_tail = client->writebuf_start;
     client->sockfd = sockfd;
     /* First characters sent are the start of protocol string. */
-    ret = send_to_client(client, SOP_STRING);
+    ret = send_string(client, SOP_STRING);
     if (ret == -1) {
         KFS_FREE(client->writebuf_start);
         KFS_FREE(client->readbuf_start);
         KFS_FREE(client);
         KFS_RETURN(-1);
     }
+    /* Add the client to the global list of connected clients. */
     client->next = NULL;
     if (clientlist_tail == NULL) {
         KFS_ASSERT(clientlist_head == NULL);
@@ -171,7 +170,7 @@ new_client(int sockfd)
     } else {
         KFS_ASSERT(clientlist_head != NULL);
         clientlist_tail->next = client;
-        clientlist_tail = next;
+        clientlist_tail = client;
     }
 
     KFS_RETURN(0);
