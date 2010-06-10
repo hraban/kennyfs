@@ -33,23 +33,93 @@ struct kenny_conf {
 /**
  * Node in a linked list of connected network clients.
  */
-typedef struct client_node {
+struct client_node {
     struct client_node *next;
-    unsigned int written;
+    /** Start of the buffer for received, non-processed chars. */
+    char readbuf_start[BUF_LEN];
+    /** End of the buffer for received, non-processed chars. */
+    char *readbuf_end;
+    /** First of received chars that need processing. */
+    char *readbuf_head;
+    /** Last to-be-processed char, + 1 (ie: if head==tail all is processed). */
+    char *readbuf_tail;
+    /** Start of the buffer for chars that need to be sent to client.. */
+    char writebuf_start[BUF_LEN];
+    /** End of the buffer for chars that need to be sent to client. */
+    char *writebuf_end;
+    /** First of the chars that need to be sent to client. */
+    char *writebuf_head;
+    /** Last of the chars that need to be sent, + 1. */
+    char *writebuf_tail;
     int sockfd;
-    char *writebuf;
-} *clientp_t;
+};
+typedef struct client_node *client_t;
 
 /** The start of the protocol: sent whenever a new client connects. */
-const char SOP_STRING[] = "poep\n";
-
-/*
- * List of all connected clients.
- */
+static const char SOP_STRING[] = "poep\n";
+/** The size of per-client read and write buffers. */
+static const size_t BUF_LEN = 1;
 /** The first client in the list. This pointer almost never changes. */
-static clientp_t clientlist_head = NULL;
+static client_t clientlist_head = NULL;
 /** The last client that connected. This pointer often changes. */
-static clientp_t clientlist_tail = NULL;
+static client_t clientlist_tail = NULL;
+
+/**
+ * Send raw message (array of chars) to given client. Returns -1 on failure, 0
+ * on success. Puts the message in a buffer, actual sending happens when the
+ * connection with the client is ready for it (and errors there are not detected
+ * by this function).
+ */
+static int
+send_msg(client_t c, const char *msg, size_t msglen);
+{
+    int ret = 0;
+    /* Space left in the write buffer. */
+    size_t freebuflen = 0;
+    /* Contigious space left in the write buffer. */
+    size_t freecontig = 0;
+
+    KFS_ENTER();
+
+    KFS_ASSERT(msg != NULL);
+    KFS_ASSERT(c != NULL);
+    freebuflen = c->writebuf_tail - c->writebuf_head;
+    if (c->writebuf_tail <= c->writebuf_head) {
+        freebuflen = BUF_LEN - freebuflen;
+    }
+    if (msglen > freebuflen) {
+        KFS_RETURN(-1);
+    }
+    freecontig = c->writebuf_end - c->writebuf_tail;
+    if (msglen <= freecontig) {
+        /* Contiguous free space fits message size. */
+        memcpy(c->writebuf_tail, msg, msglen);
+        c->writebuf_tail += msglen;
+    } else {
+        /* Split message up to fill contiguous space and continue at start. */
+        memcpy(c->writebuf_tail, msg, freecontig);
+        memcpy(c->writebuf_start, msg + freecontig, msglen - freecontig);
+        c->writebuf_tail = c->writebuf_start + msglen - freecontig;
+    }
+
+    KFS_RETURN(0);
+}
+
+/**
+ * Send string (null-terminated array of chars). Does not include the appending
+ * null byte.
+ */
+static int
+send_string(client_t client, const char *string)
+{
+    int ret = 0;
+
+    KFS_ENTER();
+
+    ret = send_msg(client, string, strlen(string));
+
+    KFS_RETURN(ret);
+}
 
 /**
  * Process a new incoming connection.
@@ -57,38 +127,54 @@ static clientp_t clientlist_tail = NULL;
 static int
 new_client(int sockfd)
 {
-    clientp_t client = NULL;
+    client_t client = NULL;
     ssize_t syscallret = 0;
     int ret = 0;
 
     KFS_ENTER();
 
-    ret = 0;
     client = KFS_MALLOC(sizeof(*client));
     if (client == NULL) {
-        ret = -1;
+        KFS_RETURN(-1);
+    }
+    client->readbuf_start = KFS_MALLOC(BUF_LEN);
+    if (client->readbuf_start == NULL) {
+        KFS_FREE(client);
+        KFS_RETURN(-1);
+    }
+    client->readbuf_end = client->readbuf_start + BUF_LEN;
+    client->readbuf_head = client->readbuf_start;
+    client->readbuf_tail = client->readbuf_start;
+    client->writebuf_start = KFS_MALLOC(BUF_LEN);
+    if (client->writebuf_start == NULL) {
+        KFS_FREE(client->readbuf_start);
+        KFS_FREE(client);
+        KFS_RETURN(-1);
+    }
+    client->writebuf_end = client->writebuf_start + BUF_LEN;
+    client->writebuf_head = client->writebuf_start;
+    client->writebuf_tail = client->writebuf_start;
+    client->sockfd = sockfd;
+    /* First characters sent are the start of protocol string. */
+    ret = send_to_client(client, SOP_STRING);
+    if (ret == -1) {
+        KFS_FREE(client->writebuf_start);
+        KFS_FREE(client->readbuf_start);
+        KFS_FREE(client);
+        KFS_RETURN(-1);
+    }
+    client->next = NULL;
+    if (clientlist_tail == NULL) {
+        KFS_ASSERT(clientlist_head == NULL);
+        clientlist_head = client;
+        clientlist_tail = client;
     } else {
-        /* First characters sent are the start of protocol string. */
-        client->written = 0;
-        client->writebuf = kfs_strcpy(SOP_STRING);
-        if (client->writebuf == NULL) {
-            ret = -1;
-        } else {
-            /* Add new client to the list of connected clients. */
-            if (clientlist_head == NULL) {
-                KFS_ASSERT(clientlist_tail == NULL);
-                clientlist_head = client;
-                clientlist_tail = client;
-            } else {
-                KFS_ASSERT(clientlist_tail != NULL);
-                clientlist_tail->next = client;
-                clientlist_tail = client;
-            }
-            ret = 0;
-        }
+        KFS_ASSERT(clientlist_head != NULL);
+        clientlist_tail->next = client;
+        clientlist_tail = next;
     }
 
-    KFS_RETURN(ret);
+    KFS_RETURN(0);
 }
 
 /**
@@ -267,6 +353,8 @@ prepare_posix_backend(struct kfs_brick_api *api, char *path)
     struct kfs_brick_arg *arg = NULL;
     int ret = 0;
 
+    KFS_ENTER();
+
     KFS_ASSERT(api != NULL && path != NULL);
     /* Prepare for initialization of the brick: construct its argument. */
     arg = api->makearg(path);
@@ -284,7 +372,7 @@ prepare_posix_backend(struct kfs_brick_api *api, char *path)
         arg = kfs_brick_delarg(arg);
     }
 
-    return ret;
+    KFS_RETURN(ret);
 }
 
 int

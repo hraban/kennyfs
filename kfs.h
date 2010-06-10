@@ -24,6 +24,6 @@
 #  endif
 #endif
 
-typedef unsigned int uint;
+typedef unsigned int uint_t;
 
 #endif
