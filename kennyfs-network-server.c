@@ -20,6 +20,8 @@
 #include "kfs_misc.h"
 
 #define KENNYFS_OPT(t, p, v) {t, offsetof(struct kenny_conf, p), v}
+/** The size of per-client read and write buffers. */
+#define BUF_LEN 10
 
 /**
  * Configuration variables.
@@ -56,22 +58,18 @@ struct client_node {
 };
 typedef struct client_node *client_t;
 
-/** The size of per-client read and write buffers. */
-static const int BUF_LEN = 1;
 /** The start of the protocol: sent whenever a new client connects. */
 static const char SOP_STRING[] = "poep\n";
 /** Temporary buffer for reading and writing to clients. */
 static char tmp_buf[BUF_LEN];
 /** All connected clients. */
-static client_t clients_online = NULL;
-/** All disconnected clients. */
-static client_t clients_offline = NULL;
+static client_t clients = NULL;
 
 /**
  * Runtime integrity check of a client struct. NOP if debugging is disabled.
  */
 static void
-verify_client(client_t)
+verify_client(client_t c)
 {
     KFS_ASSERT(c != NULL);
     KFS_ASSERT(c->readbuf_start != NULL);
@@ -94,8 +92,7 @@ verify_client(client_t)
         KFS_ASSERT(c->writebuf_head >= c->writebuf_start);
         KFS_ASSERT(c->writebuf_head < c->writebuf_end);
     }
-    KFS_ASSERT(c->prev != NULL ||
-            (clients_online == c || clients_offline == c));
+    KFS_ASSERT((c->prev != NULL) ^ (clients == c));
 };
 
 /**
@@ -179,7 +176,7 @@ write_pending(client_t c)
         memcpy(tmp_buf + len, c->writebuf_start, c->writebuf_used - len);
         buffer = tmp_buf;
     }
-    sysret = write(c->sockfd, buf, c->writebuf_used);
+    sysret = write(c->sockfd, buffer, c->writebuf_used);
     if (sysret == -1) {
         KFS_ERROR("write: %s", strerror(errno));
         KFS_RETURN(-1);
@@ -245,6 +242,68 @@ send_string(client_t client, const char *string)
     KFS_ENTER();
 
     ret = send_msg(client, string, strlen(string));
+    if (ret == -1) {
+        KFS_DEBUG("Not enough buffer space to hold message '%s'.", string);
+    }
+
+    KFS_RETURN(ret);
+}
+
+/**
+ * Close a socket, print a message on error. Returns -1 on failure, 0 on
+ * success.
+ */
+static int
+close_socket(int sockfd)
+{
+    int ret = 0;
+
+    KFS_ENTER();
+
+    KFS_ASSERT(sockfd >= 0);
+    /* TODO: shutdown(2) here, also? */
+#if 0
+    ret = shutdown(sockfd, SHUT_RDWR);
+    if (ret == -1 && errno != ENOTCONN) {
+        KFS_ERROR("shutdown: %s", strerror(errno));
+    } else {
+#endif
+        ret = close(sockfd);
+        if (ret == -1) {
+            KFS_ERROR("close: %s", strerror(errno));
+        }
+#if 0
+    }
+#endif
+
+    KFS_RETURN(ret);
+}
+
+/**
+ * Handle disconnection of a client. Frees all allocated resources, including
+ * the client struct.
+ */
+static int
+disconnect_client(client_t c)
+{
+    int ret = 0;
+
+    KFS_ENTER();
+
+    verify_client(c);
+    if (clients->prev == NULL) {
+        KFS_ASSERT(c == clients);
+        clients = c->next;
+    } else {
+        c->prev->next = c->next;
+    }
+    if (c->next != NULL) {
+        c->next->prev = c->prev;
+    }
+    c->readbuf_start = KFS_FREE(c->readbuf_start);
+    c->writebuf_start = KFS_FREE(c->writebuf_start);
+    ret = close_socket(c->sockfd);
+    c = KFS_FREE(c);
 
     KFS_RETURN(ret);
 }
@@ -282,81 +341,20 @@ connect_client(int sockfd)
     c->writebuf_head = c->writebuf_start;
     c->writebuf_used = 0;
     c->sockfd = sockfd;
+    /* Add the c to the global list of connected clients. */
+    if (clients != NULL) {
+        clients->prev = c;
+    }
+    c->next = clients;
+    clients = c;
+    c->prev = NULL;
     /* First characters sent are the start of protocol string. */
     ret = send_string(c, SOP_STRING);
     if (ret == -1) {
-        KFS_FREE(c->writebuf_start);
-        KFS_FREE(c->readbuf_start);
-        KFS_FREE(c);
-        KFS_RETURN(-1);
-    }
-    /* Add the c to the global list of connected clients. */
-    if (clients_online != NULL) {
-        clients_online->prev = c;
-    }
-    c->next = clients_online;
-    clients_online = c;
-    c->prev = NULL;
-    verify_client(c);
-
-    KFS_RETURN(0);
-}
-
-/**
- * Handle disconnection of a client.
- */
-static void
-disconnect_client(client_t c)
-{
-    KFS_ENTER();
-
-    verify_client(c);
-    if (clients->prev == NULL) {
-        KFS_ASSERT(c == clients_online);
-        clients_online = client->next;
+        disconnect_client(c);
     } else {
-        client->prev->next = client->next;
+        verify_client(c);
     }
-    if (client->next != NULL) {
-        client->next->prev = client->prev;
-    }
-    if (clients_offline != NULL) {
-        clients_offline->prev = client;
-    }
-    client->next = clients_offline;
-    clients_offline = client;
-    client->prev = NULL;
-    /* TODO: Free resources and properly manage shut-down, instead. */
-
-    KFS_RETURN(0);
-}
-
-/**
- * Close a socket, print a message on error. Returns -1 on failure, 0 on
- * success.
- */
-static int
-close_socket(int sockfd)
-{
-    int ret = 0;
-
-    KFS_ENTER();
-
-    KFS_ASSERT(sockfd >= 0);
-    /* TODO: shutdown(2) here, also? */
-#if 0
-    ret = shutdown(sockfd, SHUT_RDWR);
-    if (ret == -1 && errno != ENOTCONN) {
-        KFS_ERROR("shutdown: %s", strerror(errno));
-    } else {
-#endif
-        ret = close(sockfd);
-        if (ret == -1) {
-            KFS_ERROR("close: %s", strerror(errno));
-        }
-#if 0
-    }
-#endif
 
     KFS_RETURN(ret);
 }
@@ -442,7 +440,6 @@ run_daemon(char *port, const struct fuse_operations *kenny_oper)
     int newsock = 0;
     int nfds = 0;
     int ret = 0;
-    int i = 0;
 
     KFS_ENTER();
 
@@ -464,7 +461,7 @@ run_daemon(char *port, const struct fuse_operations *kenny_oper)
             close_socket(listen_sock);
             break;
         }
-        if (FD_ISSET(listen_socket, &readset)) {
+        if (FD_ISSET(listen_sock, &readset)) {
             /* New incoming connection on listening socket. */
             addrsize = sizeof(client_address);
             memset(&client_address, 0, addrsize);
@@ -483,7 +480,7 @@ run_daemon(char *port, const struct fuse_operations *kenny_oper)
             }
         }
         /* Check all possible sockets to see if there is pending data. */
-        for (client = clientstack; client != NULL; client = client->next) {
+        for (client = clients; client != NULL; client = client->next) {
             if (FD_ISSET(client->sockfd, &readset)) {
                 /* Pending data on existing connection. */
                 /* TODO: handle. */
@@ -492,6 +489,7 @@ run_daemon(char *port, const struct fuse_operations *kenny_oper)
                 if (ret == -1 || ret == 2) {
                     /* Disconnected. */
                     FD_CLR(client->sockfd, &allsocks);
+                    /* Error may occur while disconnecting client: ignore. */
                     disconnect_client(client);
                 }
             }
