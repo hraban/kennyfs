@@ -35,22 +35,23 @@ struct kenny_conf {
  */
 struct client_node {
     struct client_node *next;
+    struct client_node *prev;
     /** Start of the buffer for received, non-processed chars. */
     char *readbuf_start;
-    /** End of the buffer for received, non-processed chars. */
-    char *readbuf_end;
     /** First of received chars that need processing. */
     char *readbuf_head;
-    /** Last to-be-processed char, + 1 (ie: if head==tail all is processed). */
-    char *readbuf_tail;
+    /** End of the buffer for received, non-processed chars, + 1. */
+    char *readbuf_end;
     /** Start of the buffer for chars that need to be sent to client.. */
     char *writebuf_start;
-    /** End of the buffer for chars that need to be sent to client. */
-    char *writebuf_end;
     /** First of the chars that need to be sent to client. */
     char *writebuf_head;
-    /** Last of the chars that need to be sent, + 1. */
-    char *writebuf_tail;
+    /** End of the buffer for chars that need to be sent to client, + 1. */
+    char *writebuf_end;
+    /** Number of received chars that need processing. */
+    size_t readbuf_used;
+    /** Number of chars that need to be sent to client. */
+    size_t writebuf_used;
     int sockfd;
 };
 typedef struct client_node *client_t;
@@ -59,47 +60,175 @@ typedef struct client_node *client_t;
 static const int BUF_LEN = 1;
 /** The start of the protocol: sent whenever a new client connects. */
 static const char SOP_STRING[] = "poep\n";
-/** The first client in the list. This pointer almost never changes. */
-static client_t clientlist_head = NULL;
-/** The last client that connected. This pointer often changes. */
-static client_t clientlist_tail = NULL;
+/** Temporary buffer for reading and writing to clients. */
+static char tmp_buf[BUF_LEN];
+/** All connected clients. */
+static client_t clients_online = NULL;
+/** All disconnected clients. */
+static client_t clients_offline = NULL;
 
 /**
- * Send raw message (array of chars) to given client. Returns -1 on failure, 0
- * on success. Puts the message in a buffer, actual sending happens when the
- * connection with the client is ready for it (and errors there are not detected
- * by this function).
+ * Runtime integrity check of a client struct. NOP if debugging is disabled.
+ */
+static void
+verify_client(client_t)
+{
+    KFS_ASSERT(c != NULL);
+    KFS_ASSERT(c->readbuf_start != NULL);
+    KFS_ASSERT(c->readbuf_end != NULL);
+    KFS_ASSERT(c->readbuf_end - c->readbuf_start == BUF_LEN);
+    KFS_ASSERT(c->readbuf_used <= BUF_LEN);
+    if (c->readbuf_used == 0) {
+        KFS_ASSERT(c->readbuf_head == c->readbuf_start);
+    } else {
+        KFS_ASSERT(c->readbuf_head >= c->readbuf_start);
+        KFS_ASSERT(c->readbuf_head < c->readbuf_end);
+    }
+    KFS_ASSERT(c->writebuf_start != NULL);
+    KFS_ASSERT(c->writebuf_end != NULL);
+    KFS_ASSERT(c->writebuf_end - c->writebuf_start == BUF_LEN);
+    KFS_ASSERT(c->writebuf_used <= BUF_LEN);
+    if (c->writebuf_used == 0) {
+        KFS_ASSERT(c->writebuf_head == c->writebuf_start);
+    } else {
+        KFS_ASSERT(c->writebuf_head >= c->writebuf_start);
+        KFS_ASSERT(c->writebuf_head < c->writebuf_end);
+    }
+    KFS_ASSERT(c->prev != NULL ||
+            (clients_online == c || clients_offline == c));
+};
+
+/**
+ * Read data coming from this client, pending on the connection. Will execute a
+ * blocking read(2) syscall, use select() to check for availability if wanted.
+ * Returns -1 on failure, 0 if data was succesfully read, 1 if there is no more
+ * buffer space available for this client (not fatal, just wait for a while and
+ * retry later, hoping the client is patient as well), 2 if an EOF was
+ * encountered.
+ *
+ * Currently only reads as much bytes as is left in a contiguous block in the
+ * buffer. TODO: Read as much as available in entire buffer and store properly.
+ */
+static int
+read_pending(client_t c)
+{
+    char *p = NULL;
+    ssize_t sysret = 0;
+    size_t len = 0;
+
+    KFS_ENTER();
+
+    verify_client(c);
+    /* Free space in buffer. */
+    len = BUF_LEN - c->readbuf_used;
+    if (len == 0) {
+        KFS_RETURN(1);
+    }
+    sysret = read(c->sockfd, tmp_buf, len);
+    switch (sysret) {
+    case -1:
+        KFS_ERROR("read: %s", strerror(errno));
+        KFS_RETURN(-1);
+        break;
+    case 0:
+        KFS_RETURN(2);
+        break;
+    default:
+        /* The address after the last used address. */
+        p = c->readbuf_head + c->readbuf_used;
+        /* The size of the next contiguous block. */
+        len = c->readbuf_end - p;
+        if (sysret <= len) {
+            memcpy(p, tmp_buf, sysret);
+        } else {
+            /* Message does not fit at end: split it up. */
+            memcpy(p, tmp_buf, len);
+            memcpy(c->readbuf_start, tmp_buf + len, sysret - len);
+        }
+        c->readbuf_used += sysret;
+        break;
+    }
+    verify_client(c);
+
+    KFS_RETURN(0);
+}
+
+/**
+ * Process write buffer of given client, send pending data (as much as
+ * possible).
+ */
+static int
+write_pending(client_t c)
+{
+    size_t len = 0;
+    ssize_t sysret = 0;
+    char *buffer = NULL;
+
+    KFS_ENTER();
+
+    verify_client(c);
+    if (c->writebuf_used == 0) {
+        KFS_RETURN(0);
+    }
+    len = c->writebuf_end - c->writebuf_head;
+    if (len > c->writebuf_used) {
+        buffer = c->writebuf_head;
+    } else {
+        /* Write buffer wraps around end: copy to temp and write() once. */
+        memcpy(tmp_buf, c->writebuf_head, len);
+        memcpy(tmp_buf + len, c->writebuf_start, c->writebuf_used - len);
+        buffer = tmp_buf;
+    }
+    sysret = write(c->sockfd, buf, c->writebuf_used);
+    if (sysret == -1) {
+        KFS_ERROR("write: %s", strerror(errno));
+        KFS_RETURN(-1);
+    }
+    c->writebuf_head += sysret;
+    if (c->writebuf_head >= c->writebuf_end) {
+        c->writebuf_head -= BUF_LEN;
+    }
+    c->writebuf_used -= sysret;
+    verify_client(c);
+
+    KFS_RETURN(0);
+}
+
+/**
+ * Send raw message (array of chars) to given client. Returns -1 if the buffer
+ * is full, 0 on success. Puts the message in a buffer, actual sending happens
+ * when the connection with the client is ready for it (and errors there are not
+ * detected by this function).
  */
 static int
 send_msg(client_t c, const char *msg, size_t msglen)
 {
-    /* Space left in the write buffer. */
-    size_t freebuflen = 0;
-    /* Contigious space left in the write buffer. */
-    size_t freecontig = 0;
+    size_t len = 0;
+    char *p = NULL;
 
     KFS_ENTER();
 
     KFS_ASSERT(msg != NULL);
-    KFS_ASSERT(c != NULL);
-    freebuflen = c->writebuf_tail - c->writebuf_head;
-    if (c->writebuf_tail <= c->writebuf_head) {
-        freebuflen = BUF_LEN - freebuflen;
-    }
-    if (msglen > freebuflen) {
+    verify_client(c);
+    /* Free space in buffer, total. */
+    len = BUF_LEN - c->writebuf_used;
+    if (msglen > len) {
         KFS_RETURN(-1);
     }
-    freecontig = c->writebuf_end - c->writebuf_tail;
-    if (msglen <= freecontig) {
+    /* Last used address + 1. */
+    p = c->writebuf_head + c->writebuf_used;
+    /* Length of free contiguous block. */
+    len = c->writebuf_end - p;
+    if (msglen <= len) {
         /* Contiguous free space fits message size. */
-        memcpy(c->writebuf_tail, msg, msglen);
-        c->writebuf_tail += msglen;
+        memcpy(p, msg, msglen);
     } else {
         /* Split message up to fill contiguous space and continue at start. */
-        memcpy(c->writebuf_tail, msg, freecontig);
-        memcpy(c->writebuf_start, msg + freecontig, msglen - freecontig);
-        c->writebuf_tail = c->writebuf_start + msglen - freecontig;
+        memcpy(p, msg, len);
+        memcpy(c->writebuf_start, msg + len, msglen - len);
     }
+    c->writebuf_used += msglen;
+    verify_client(c);
 
     KFS_RETURN(0);
 }
@@ -124,54 +253,80 @@ send_string(client_t client, const char *string)
  * Process a new incoming connection.
  */
 static int
-new_client(int sockfd)
+connect_client(int sockfd)
 {
-    client_t client = NULL;
+    client_t c = NULL;
     int ret = 0;
 
     KFS_ENTER();
 
-    client = KFS_MALLOC(sizeof(*client));
-    if (client == NULL) {
+    c = KFS_MALLOC(sizeof(*c));
+    if (c == NULL) {
         KFS_RETURN(-1);
     }
-    client->readbuf_start = KFS_MALLOC(BUF_LEN);
-    if (client->readbuf_start == NULL) {
-        KFS_FREE(client);
+    c->readbuf_start = KFS_MALLOC(BUF_LEN);
+    if (c->readbuf_start == NULL) {
+        KFS_FREE(c);
         KFS_RETURN(-1);
     }
-    client->readbuf_end = client->readbuf_start + BUF_LEN;
-    client->readbuf_head = client->readbuf_start;
-    client->readbuf_tail = client->readbuf_start;
-    client->writebuf_start = KFS_MALLOC(BUF_LEN);
-    if (client->writebuf_start == NULL) {
-        KFS_FREE(client->readbuf_start);
-        KFS_FREE(client);
+    c->readbuf_end = c->readbuf_start + BUF_LEN;
+    c->readbuf_head = c->readbuf_start;
+    c->readbuf_used = 0;
+    c->writebuf_start = KFS_MALLOC(BUF_LEN);
+    if (c->writebuf_start == NULL) {
+        KFS_FREE(c->readbuf_start);
+        KFS_FREE(c);
         KFS_RETURN(-1);
     }
-    client->writebuf_end = client->writebuf_start + BUF_LEN;
-    client->writebuf_head = client->writebuf_start;
-    client->writebuf_tail = client->writebuf_start;
-    client->sockfd = sockfd;
+    c->writebuf_end = c->writebuf_start + BUF_LEN;
+    c->writebuf_head = c->writebuf_start;
+    c->writebuf_used = 0;
+    c->sockfd = sockfd;
     /* First characters sent are the start of protocol string. */
-    ret = send_string(client, SOP_STRING);
+    ret = send_string(c, SOP_STRING);
     if (ret == -1) {
-        KFS_FREE(client->writebuf_start);
-        KFS_FREE(client->readbuf_start);
-        KFS_FREE(client);
+        KFS_FREE(c->writebuf_start);
+        KFS_FREE(c->readbuf_start);
+        KFS_FREE(c);
         KFS_RETURN(-1);
     }
-    /* Add the client to the global list of connected clients. */
-    client->next = NULL;
-    if (clientlist_tail == NULL) {
-        KFS_ASSERT(clientlist_head == NULL);
-        clientlist_head = client;
-        clientlist_tail = client;
-    } else {
-        KFS_ASSERT(clientlist_head != NULL);
-        clientlist_tail->next = client;
-        clientlist_tail = client;
+    /* Add the c to the global list of connected clients. */
+    if (clients_online != NULL) {
+        clients_online->prev = c;
     }
+    c->next = clients_online;
+    clients_online = c;
+    c->prev = NULL;
+    verify_client(c);
+
+    KFS_RETURN(0);
+}
+
+/**
+ * Handle disconnection of a client.
+ */
+static void
+disconnect_client(client_t c)
+{
+    KFS_ENTER();
+
+    verify_client(c);
+    if (clients->prev == NULL) {
+        KFS_ASSERT(c == clients_online);
+        clients_online = client->next;
+    } else {
+        client->prev->next = client->next;
+    }
+    if (client->next != NULL) {
+        client->next->prev = client->prev;
+    }
+    if (clients_offline != NULL) {
+        clients_offline->prev = client;
+    }
+    client->next = clients_offline;
+    clients_offline = client;
+    client->prev = NULL;
+    /* TODO: Free resources and properly manage shut-down, instead. */
 
     KFS_RETURN(0);
 }
@@ -279,6 +434,7 @@ run_daemon(char *port, const struct fuse_operations *kenny_oper)
 
     fd_set allsocks;
     fd_set readset;
+    client_t client = NULL;
     struct sockaddr_in client_address;
     size_t addrsize = 0;
     /* Socket listening for incoming connections. */
@@ -308,34 +464,36 @@ run_daemon(char *port, const struct fuse_operations *kenny_oper)
             close_socket(listen_sock);
             break;
         }
-        /* Check all possible sockets to see if there is pending data. */
-        /* TODO: Efficiency: only check sockets that are in use. */
-        for (i = 0; i <= nfds; i++) {
-            if (!FD_ISSET(i, &readset)) {
-                /* No pending data to be read from this socket. */
-                continue;
-            }
-            if (i == listen_sock) {
-                /* New incoming connection on listening socket. */
-                addrsize = sizeof(client_address);
-                memset(&client_address, 0, addrsize);
-                newsock = accept(listen_sock,
-                        (struct sockaddr *) &client_address, &addrsize);
-                if (newsock == -1) {
-                    KFS_ERROR("accept: %s", strerror(errno));
-                    KFS_WARNING("Could not accept new connection.");
-                } else {
-                    ret = new_client(newsock);
-                    if (ret == 0) {
-                        KFS_INFO("Succesfully accepted connection.");
-                        FD_SET(newsock, &allsocks);
-                        nfds = max(newsock, nfds);
-                    }
-                }
+        if (FD_ISSET(listen_socket, &readset)) {
+            /* New incoming connection on listening socket. */
+            addrsize = sizeof(client_address);
+            memset(&client_address, 0, addrsize);
+            newsock = accept(listen_sock,
+                    (struct sockaddr *) &client_address, &addrsize);
+            if (newsock == -1) {
+                KFS_ERROR("accept: %s", strerror(errno));
+                KFS_WARNING("Could not accept new connection.");
             } else {
+                ret = connect_client(newsock);
+                if (ret == 0) {
+                    KFS_INFO("Succesfully accepted connection.");
+                    FD_SET(newsock, &allsocks);
+                    nfds = max(newsock, nfds);
+                }
+            }
+        }
+        /* Check all possible sockets to see if there is pending data. */
+        for (client = clientstack; client != NULL; client = client->next) {
+            if (FD_ISSET(client->sockfd, &readset)) {
                 /* Pending data on existing connection. */
                 /* TODO: handle. */
                 KFS_DEBUG("Data available from client.");
+                ret = read_pending(client);
+                if (ret == -1 || ret == 2) {
+                    /* Disconnected. */
+                    FD_CLR(client->sockfd, &allsocks);
+                    disconnect_client(client);
+                }
             }
         }
     }
