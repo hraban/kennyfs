@@ -36,6 +36,7 @@ struct kenny_conf {
  * Node in a linked list of connected network clients.
  */
 struct client_node {
+    /* Linked list pointers for list of all connected clients. */
     struct client_node *next;
     struct client_node *prev;
     /** Start of the buffer for received, non-processed chars. */
@@ -76,23 +77,16 @@ verify_client(client_t c)
     KFS_ASSERT(c->readbuf_end != NULL);
     KFS_ASSERT(c->readbuf_end - c->readbuf_start == BUF_LEN);
     KFS_ASSERT(c->readbuf_used <= BUF_LEN);
-    if (c->readbuf_used == 0) {
-        KFS_ASSERT(c->readbuf_head == c->readbuf_start);
-    } else {
-        KFS_ASSERT(c->readbuf_head >= c->readbuf_start);
-        KFS_ASSERT(c->readbuf_head < c->readbuf_end);
-    }
+    KFS_ASSERT(c->readbuf_head >= c->readbuf_start);
+    KFS_ASSERT(c->readbuf_head < c->readbuf_end);
     KFS_ASSERT(c->writebuf_start != NULL);
     KFS_ASSERT(c->writebuf_end != NULL);
     KFS_ASSERT(c->writebuf_end - c->writebuf_start == BUF_LEN);
     KFS_ASSERT(c->writebuf_used <= BUF_LEN);
-    if (c->writebuf_used == 0) {
-        KFS_ASSERT(c->writebuf_head == c->writebuf_start);
-    } else {
-        KFS_ASSERT(c->writebuf_head >= c->writebuf_start);
-        KFS_ASSERT(c->writebuf_head < c->writebuf_end);
-    }
+    KFS_ASSERT(c->writebuf_head >= c->writebuf_start);
+    KFS_ASSERT(c->writebuf_head < c->writebuf_end);
     KFS_ASSERT((c->prev != NULL) ^ (clients == c));
+    KFS_ASSERT(clients == NULL || clients->prev == NULL);
 };
 
 /**
@@ -152,7 +146,8 @@ read_pending(client_t c)
 
 /**
  * Process write buffer of given client, send pending data (as much as
- * possible).
+ * possible). Returns 0 on success, -1 on failure. Do not call if no pending
+ * data is available.
  */
 static int
 write_pending(client_t c)
@@ -164,9 +159,7 @@ write_pending(client_t c)
     KFS_ENTER();
 
     verify_client(c);
-    if (c->writebuf_used == 0) {
-        KFS_RETURN(0);
-    }
+    KFS_ASSERT(c->writebuf_used != 0);
     len = c->writebuf_end - c->writebuf_head;
     if (len > c->writebuf_used) {
         buffer = c->writebuf_head;
@@ -181,11 +174,11 @@ write_pending(client_t c)
         KFS_ERROR("write: %s", strerror(errno));
         KFS_RETURN(-1);
     }
+    c->writebuf_used -= sysret;
     c->writebuf_head += sysret;
     if (c->writebuf_head >= c->writebuf_end) {
         c->writebuf_head -= BUF_LEN;
     }
-    c->writebuf_used -= sysret;
     verify_client(c);
 
     KFS_RETURN(0);
@@ -207,6 +200,9 @@ send_msg(client_t c, const char *msg, size_t msglen)
 
     KFS_ASSERT(msg != NULL);
     verify_client(c);
+    if (msglen == 0) {
+        KFS_RETURN(0);
+    }
     /* Free space in buffer, total. */
     len = BUF_LEN - c->writebuf_used;
     if (msglen > len) {
@@ -241,6 +237,7 @@ send_string(client_t client, const char *string)
 
     KFS_ENTER();
 
+    KFS_ASSERT(string != NULL);
     ret = send_msg(client, string, strlen(string));
     if (ret == -1) {
         KFS_DEBUG("Not enough buffer space to hold message '%s'.", string);
@@ -291,11 +288,11 @@ disconnect_client(client_t c)
     KFS_ENTER();
 
     verify_client(c);
-    if (clients->prev == NULL) {
-        KFS_ASSERT(c == clients);
-        clients = c->next;
-    } else {
+    /* Remove from the list of connected clients. */
+    if (c->prev != NULL) {
         c->prev->next = c->next;
+    } else {
+        clients = c->next;
     }
     if (c->next != NULL) {
         c->next->prev = c->prev;
@@ -304,6 +301,7 @@ disconnect_client(client_t c)
     c->writebuf_start = KFS_FREE(c->writebuf_start);
     ret = close_socket(c->sockfd);
     c = KFS_FREE(c);
+    KFS_INFO("Disconnected client.");
 
     KFS_RETURN(ret);
 }
@@ -351,6 +349,7 @@ connect_client(int sockfd)
     /* First characters sent are the start of protocol string. */
     ret = send_string(c, SOP_STRING);
     if (ret == -1) {
+        /* Disconnection could also fail, but return value is already -1. */
         disconnect_client(c);
     } else {
         verify_client(c);
@@ -432,6 +431,7 @@ run_daemon(char *port, const struct fuse_operations *kenny_oper)
 
     fd_set allsocks;
     fd_set readset;
+    fd_set writeset;
     client_t client = NULL;
     struct sockaddr_in client_address;
     size_t addrsize = 0;
@@ -446,6 +446,7 @@ run_daemon(char *port, const struct fuse_operations *kenny_oper)
     ret = 0;
     FD_ZERO(&allsocks);
     FD_ZERO(&readset);
+    FD_ZERO(&writeset);
     listen_sock = create_listen_socket(port);
     if (listen_sock == -1) {
         KFS_RETURN(-1);
@@ -455,7 +456,15 @@ run_daemon(char *port, const struct fuse_operations *kenny_oper)
     for (;;) {
         /* Input all sockets to select(). */
         readset = allsocks;
-        ret = select(nfds + 1, &readset, NULL, NULL, NULL);
+        /* Only bother writing for clients that have something in buffer. */
+        FD_ZERO(&writeset);
+        for (client = clients; client != NULL; client = client->next) {
+            if (client->writebuf_used != 0) {
+                FD_SET(client->sockfd, &writeset);
+            }
+        }
+        /* TODO: handle exceptfds? */
+        ret = select(nfds + 1, &readset, &writeset, NULL, NULL);
         if (ret == -1) {
             KFS_ERROR("select: %s", strerror(errno));
             close_socket(listen_sock);
@@ -481,17 +490,24 @@ run_daemon(char *port, const struct fuse_operations *kenny_oper)
         }
         /* Check all possible sockets to see if there is pending data. */
         for (client = clients; client != NULL; client = client->next) {
+            ret = 0;
             if (FD_ISSET(client->sockfd, &readset)) {
                 /* Pending data on existing connection. */
-                /* TODO: handle. */
                 KFS_DEBUG("Data available from client.");
                 ret = read_pending(client);
-                if (ret == -1 || ret == 2) {
-                    /* Disconnected. */
-                    FD_CLR(client->sockfd, &allsocks);
-                    /* Error may occur while disconnecting client: ignore. */
-                    disconnect_client(client);
+                if (ret == 2) {
+                    /* Client closing the connection. */
+                    ret = -1;
                 }
+            }
+            if (FD_ISSET(client->sockfd, &writeset)) {
+                /* Writing is possible. */
+                ret = write_pending(client);
+            }
+            if (ret == -1) {
+                FD_CLR(client->sockfd, &allsocks);
+                /* Error may occur while disconnecting client: ignore. */
+                disconnect_client(client);
             }
         }
     }
