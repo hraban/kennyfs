@@ -1,5 +1,9 @@
 /**
- * KennyFS command-line frontend. Lots of values are hard-coded (for now).
+ * KennyFS network server. Listens for TCP connections and serves kennyfs
+ * network clients. Note that there is NO authentication and NO encryption, so
+ * please only start this in a trusted environment. All network operations are
+ * non-blocking but all operations are blocking (i.e.: one slow client will not
+ * clog the server but one client requesting something from a slow drive will).
  */
 
 #define FUSE_USE_VERSION 26
@@ -20,7 +24,6 @@
 #include "kfs_misc.h"
 #include "kennyfs-network.h"
 
-#define KENNYFS_OPT(t, p, v) {t, offsetof(struct kenny_conf, p), v}
 /** The size of per-client read and write buffers. */
 #define BUF_LEN 10
 
@@ -62,16 +65,16 @@ struct client_node {
     /** Number of chars that need to be sent to client. */
     size_t writebuf_used;
     /*
-     * Processing of incoming operation.
+     * Misc elements.
      */
     /** Size of the operation currently being received. 0 if none pending. */
     size_t opsize;
     int sockfd;
+    /** Set to true once a client is recognized as speaking the protocol. */
+    uint_t got_sop;
 };
 typedef struct client_node *client_t;
 
-/** The start of the protocol: sent whenever a new client connects. */
-static const char SOP_STRING[] = "poep\n";
 /** Temporary buffer for reading and writing to clients. */
 static char tmp_buf[BUF_LEN];
 /** All connected clients. */
@@ -96,6 +99,7 @@ verify_client(client_t c)
     KFS_ASSERT(c->writebuf_used <= BUF_LEN);
     KFS_ASSERT(c->writebuf_head >= c->writebuf_start);
     KFS_ASSERT(c->writebuf_head < c->writebuf_end);
+    KFS_ASSERT(c->got_sop == 0 || c->got_sop == 1);
     KFS_ASSERT((c->prev != NULL) ^ (clients == c));
     KFS_ASSERT(clients == NULL || clients->prev == NULL);
 };
@@ -133,6 +137,38 @@ read_readbuffer(client_t c, size_t n)
 }
 
 /**
+ * Process a serialized operation for given client. Returns -1 if the serialized
+ * object is corrupted.
+ */
+static int
+process_operation(client_t c, const char *rawop, size_t opsize)
+{
+    (void) c;
+
+    uint16_t net_i = 0;
+    uint_t opid = 0;
+    ssize_t size = 0;
+
+    KFS_ENTER();
+
+    size = sizeof(uint16_t);
+    KFS_ASSERT(size == 2);
+    if (opsize < size) {
+        KFS_RETURN(-1);
+    }
+    memcpy(&net_i, rawop, size);
+    opid = ntohs(net_i);
+    if (opid >= KFS_OPID_MAX_) {
+        KFS_RETURN(-1);
+    }
+    KFS_DEBUG("Processing operation %u.", opid);
+    /* TODO: Process. */
+    rawop += size;
+
+    KFS_RETURN(0);
+}
+
+/**
  * If a new operation is completely in the receive buffer, process it.
  */
 static int
@@ -141,11 +177,29 @@ process_readbuffer(client_t c)
     char *raw = NULL;
     uint32_t net_i = 0;
     uint32_t opsize = 0;
+    size_t size = 0;
     int ret = 0;
 
     KFS_ENTER();
 
     verify_client(c);
+    if (!c->got_sop) {
+        /* Wait for start of protocol first to check client validity. */
+        size = strlen(SOP_STRING);
+        raw = read_readbuffer(c, size);
+        if (raw == NULL) {
+            KFS_RETURN(0);
+        }
+        ret = memcmp(SOP_STRING, raw, size);
+        if (ret != 0) {
+            /* Did not get proper start of protocol message from client. */
+            /* TODO: Send back proper error message. */
+            KFS_DEBUG("Received erroneous SOP from client.");
+            KFS_RETURN(-1);
+        }
+        KFS_DEBUG("Received proper SOP from client.");
+        c->got_sop = 1;
+    }
     if (c->opsize == 0) {
         /* No operation pending: get the size of the next one (four bytes). */
         KFS_ASSERT(sizeof(uint32_t) == 4);
@@ -158,7 +212,8 @@ process_readbuffer(client_t c)
         opsize = ntohl(net_i);
         if (opsize > BUF_LEN) {
             /* TODO: Send back error instead of disconnecting. */
-            KFS_ERROR("Incoming operation too big: %d.", opsize);
+            KFS_ERROR("Incoming operation too big: %lu bytes?",
+                    (unsigned long) opsize);
             KFS_RETURN(-1);
         }
         c->opsize = opsize;
@@ -168,8 +223,8 @@ process_readbuffer(client_t c)
         if (raw == NULL) {
             KFS_RETURN(0);
         }
-        /* TODO: Properly process operation. */
-        KFS_DEBUG("Received operation (len=%d): '%s'", c->opsize, raw);
+        KFS_DEBUG("Received operation (%lu bytes)", (unsigned long) c->opsize);
+        process_operation(c, raw, c->opsize);
         KFS_FREE(raw);
         c->opsize = 0;
     }
