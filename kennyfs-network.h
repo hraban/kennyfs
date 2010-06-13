@@ -46,6 +46,7 @@ enum fuse_op_id {
     KFS_OPID_BMAP,
     KFS_OPID_IOCTL,
     KFS_OPID_POLL,
+    KFS_OPID_QUIT,
     KFS_OPID_MAX_
 };
 

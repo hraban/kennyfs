@@ -4,6 +4,18 @@
  * please only start this in a trusted environment. All network operations are
  * non-blocking but all operations are blocking (i.e.: one slow client will not
  * clog the server but one client requesting something from a slow drive will).
+ *
+ * The protocol is as follows:
+ *
+ * - Both send the same SOP (start of protocol) string to verify protocol
+ *   conformance.
+ * - Client sends an operation, server processes it and replies with the result.
+ *
+ * An operation is built up like this:
+ *
+ * - Size of the serialised operation as a uint32_t (4 bytes).
+ * - ID of the operation as a uint16_t (2 bytes).
+ * - Serialized operation (size - 2 bytes).
  */
 
 #define FUSE_USE_VERSION 26
@@ -73,7 +85,9 @@ struct client_node {
     /** Set to true once a client is recognized as speaking the protocol. */
     uint_t got_sop;
 };
+
 typedef struct client_node *client_t;
+typedef int (* handler_t)(client_t c, const char *rawop, size_t opsize);
 
 /** Temporary buffer for reading and writing to clients. */
 static char tmp_buf[BUF_LEN];
@@ -102,6 +116,37 @@ verify_client(client_t c)
     KFS_ASSERT(c->got_sop == 0 || c->got_sop == 1);
     KFS_ASSERT((c->prev != NULL) ^ (clients == c));
     KFS_ASSERT(clients == NULL || clients->prev == NULL);
+};
+
+/*
+ * Handlers for operations.
+ */
+
+/**
+ * Handles a QUIT message.
+ */
+static int
+handle_quit(client_t c, const char *rawop, size_t opsize)
+{
+    (void) c;
+    (void) rawop;
+
+    int ret = 0;
+
+    KFS_ENTER();
+
+    if (opsize > 0) {
+        ret = -1;
+    } else {
+        ret = 2;
+    }
+
+    KFS_RETURN(ret);
+}
+
+/** Lookup table for operation handlers. */
+static handler_t handlers[KFS_OPID_MAX_] = {
+    [KFS_OPID_QUIT] = handle_quit
 };
 
 /**
@@ -148,6 +193,8 @@ process_operation(client_t c, const char *rawop, size_t opsize)
     uint16_t net_i = 0;
     uint_t opid = 0;
     ssize_t size = 0;
+    int ret = 0;
+    handler_t handler = NULL;
 
     KFS_ENTER();
 
@@ -164,8 +211,14 @@ process_operation(client_t c, const char *rawop, size_t opsize)
     KFS_DEBUG("Processing operation %u.", opid);
     /* TODO: Process. */
     rawop += size;
+    opsize -= size;
+    handler = handlers[opid];
+    ret = 0;
+    if (handler != NULL) {
+        ret = handler(c, rawop, opsize);
+    }
 
-    KFS_RETURN(0);
+    KFS_RETURN(ret);
 }
 
 /**
@@ -224,12 +277,14 @@ process_readbuffer(client_t c)
             KFS_RETURN(0);
         }
         KFS_DEBUG("Received operation (%lu bytes)", (unsigned long) c->opsize);
-        process_operation(c, raw, c->opsize);
+        ret = process_operation(c, raw, c->opsize);
         KFS_FREE(raw);
         c->opsize = 0;
     }
-    /* Check the rest of the buffer. */
-    ret = process_readbuffer(c);
+    if (ret == 0) {
+        /* Check the rest of the buffer. */
+        ret = process_readbuffer(c);
+    }
 
     KFS_RETURN(ret);
 }
