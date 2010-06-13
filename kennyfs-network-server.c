@@ -18,6 +18,7 @@
 #include "kfs.h"
 #include "kfs_api.h"
 #include "kfs_misc.h"
+#include "kennyfs-network.h"
 
 #define KENNYFS_OPT(t, p, v) {t, offsetof(struct kenny_conf, p), v}
 /** The size of per-client read and write buffers. */
@@ -36,9 +37,14 @@ struct kenny_conf {
  * Node in a linked list of connected network clients.
  */
 struct client_node {
-    /* Linked list pointers for list of all connected clients. */
+    /*
+     * Linked list pointers for list of all connected clients.
+     */
     struct client_node *next;
     struct client_node *prev;
+    /*
+     * Network I/O buffers.
+     */
     /** Start of the buffer for received, non-processed chars. */
     char *readbuf_start;
     /** First of received chars that need processing. */
@@ -55,6 +61,11 @@ struct client_node {
     size_t readbuf_used;
     /** Number of chars that need to be sent to client. */
     size_t writebuf_used;
+    /*
+     * Processing of incoming operation.
+     */
+    /** Size of the operation currently being received. 0 if none pending. */
+    size_t opsize;
     int sockfd;
 };
 typedef struct client_node *client_t;
@@ -90,15 +101,91 @@ verify_client(client_t c)
 };
 
 /**
+ * Get a string with given number of bytes from the read buffer. Allocates a new
+ * string and returns it, or NULL if not enough bytes are available in the read
+ * buffer.
+ */
+static char *
+read_readbuffer(client_t c, size_t n)
+{
+    char *result = NULL;
+    size_t contig = 0;
+
+    KFS_ENTER();
+
+    verify_client(c);
+    if (n > c->readbuf_used) {
+        KFS_RETURN(NULL);
+    }
+    result = KFS_MALLOC(n);
+    contig = c->readbuf_end - c->readbuf_head;
+    if (contig > n) {
+        result = memcpy(result, c->readbuf_head, n);
+        c->readbuf_head += n;
+    } else {
+        memcpy(result, c->readbuf_head, contig);
+        memcpy(result + contig, c->readbuf_start, n - contig);
+        c->readbuf_head = c->readbuf_start + (n - contig);
+    }
+    c->readbuf_used -= n;
+
+    KFS_RETURN(result);
+}
+
+/**
+ * If a new operation is completely in the receive buffer, process it.
+ */
+static int
+process_readbuffer(client_t c)
+{
+    char *raw = NULL;
+    uint32_t net_i = 0;
+    uint32_t opsize = 0;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    verify_client(c);
+    if (c->opsize == 0) {
+        /* No operation pending: get the size of the next one (four bytes). */
+        KFS_ASSERT(sizeof(uint32_t) == 4);
+        raw = read_readbuffer(c, sizeof(uint32_t));
+        if (raw == NULL) {
+            KFS_RETURN(0);
+        }
+        memcpy(&net_i, raw, sizeof(uint32_t));
+        KFS_FREE(raw);
+        opsize = ntohl(net_i);
+        if (opsize > BUF_LEN) {
+            /* TODO: Send back error instead of disconnecting. */
+            KFS_ERROR("Incoming operation too big: %d.", opsize);
+            KFS_RETURN(-1);
+        }
+        c->opsize = opsize;
+    } else {
+        /* Operation pending: see if it is now received in full. */
+        raw = read_readbuffer(c, c->opsize);
+        if (raw == NULL) {
+            KFS_RETURN(0);
+        }
+        /* TODO: Properly process operation. */
+        KFS_DEBUG("Received operation (len=%d): '%s'", c->opsize, raw);
+        KFS_FREE(raw);
+        c->opsize = 0;
+    }
+    /* Check the rest of the buffer. */
+    ret = process_readbuffer(c);
+
+    KFS_RETURN(ret);
+}
+
+/**
  * Read data coming from this client, pending on the connection. Will execute a
  * blocking read(2) syscall, use select() to check for availability if wanted.
  * Returns -1 on failure, 0 if data was succesfully read, 1 if there is no more
  * buffer space available for this client (not fatal, just wait for a while and
  * retry later, hoping the client is patient as well), 2 if an EOF was
  * encountered.
- *
- * Currently only reads as much bytes as is left in a contiguous block in the
- * buffer. TODO: Read as much as available in entire buffer and store properly.
  */
 static int
 read_pending(client_t c)
@@ -106,6 +193,7 @@ read_pending(client_t c)
     char *p = NULL;
     ssize_t sysret = 0;
     size_t len = 0;
+    int ret = 0;
 
     KFS_ENTER();
 
@@ -140,8 +228,9 @@ read_pending(client_t c)
         break;
     }
     verify_client(c);
+    ret = process_readbuffer(c);
 
-    KFS_RETURN(0);
+    KFS_RETURN(ret);
 }
 
 /**
@@ -338,6 +427,7 @@ connect_client(int sockfd)
     c->writebuf_end = c->writebuf_start + BUF_LEN;
     c->writebuf_head = c->writebuf_start;
     c->writebuf_used = 0;
+    c->opsize = 0;
     c->sockfd = sockfd;
     /* Add the c to the global list of connected clients. */
     if (clients != NULL) {
