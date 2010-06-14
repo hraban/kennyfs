@@ -18,6 +18,8 @@
  * - Serialized operation (size - 2 bytes).
  */
 
+#include "server.h"
+
 #define FUSE_USE_VERSION 26
 
 #include <dlfcn.h>
@@ -35,6 +37,8 @@
 #include "kfs_api.h"
 #include "kfs_misc.h"
 #include "kennyfs-network.h"
+#include "network-server/server.h"
+#include "network-server/handlers.h"
 
 /** The size of per-client read and write buffers. */
 #define BUF_LEN 10
@@ -48,51 +52,12 @@ struct kenny_conf {
     char *port;
 };
 
-/**
- * Node in a linked list of connected network clients.
- */
-struct client_node {
-    /*
-     * Linked list pointers for list of all connected clients.
-     */
-    struct client_node *next;
-    struct client_node *prev;
-    /*
-     * Network I/O buffers.
-     */
-    /** Start of the buffer for received, non-processed chars. */
-    char *readbuf_start;
-    /** First of received chars that need processing. */
-    char *readbuf_head;
-    /** End of the buffer for received, non-processed chars, + 1. */
-    char *readbuf_end;
-    /** Start of the buffer for chars that need to be sent to client.. */
-    char *writebuf_start;
-    /** First of the chars that need to be sent to client. */
-    char *writebuf_head;
-    /** End of the buffer for chars that need to be sent to client, + 1. */
-    char *writebuf_end;
-    /** Number of received chars that need processing. */
-    size_t readbuf_used;
-    /** Number of chars that need to be sent to client. */
-    size_t writebuf_used;
-    /*
-     * Misc elements.
-     */
-    /** Size of the operation currently being received. 0 if none pending. */
-    size_t opsize;
-    int sockfd;
-    /** Set to true once a client is recognized as speaking the protocol. */
-    uint_t got_sop;
-};
-
-typedef struct client_node *client_t;
-typedef int (* handler_t)(client_t c, const char *rawop, size_t opsize);
-
 /** Temporary buffer for reading and writing to clients. */
 static char tmp_buf[BUF_LEN];
 /** All connected clients. */
 static client_t clients = NULL;
+/** Handlers for operations. */
+static const handler_t *handlers = NULL;
 
 /**
  * Runtime integrity check of a client struct. NOP if debugging is disabled.
@@ -116,37 +81,6 @@ verify_client(client_t c)
     KFS_ASSERT(c->got_sop == 0 || c->got_sop == 1);
     KFS_ASSERT((c->prev != NULL) ^ (clients == c));
     KFS_ASSERT(clients == NULL || clients->prev == NULL);
-};
-
-/*
- * Handlers for operations.
- */
-
-/**
- * Handles a QUIT message.
- */
-static int
-handle_quit(client_t c, const char *rawop, size_t opsize)
-{
-    (void) c;
-    (void) rawop;
-
-    int ret = 0;
-
-    KFS_ENTER();
-
-    if (opsize > 0) {
-        ret = -1;
-    } else {
-        ret = 2;
-    }
-
-    KFS_RETURN(ret);
-}
-
-/** Lookup table for operation handlers. */
-static handler_t handlers[KFS_OPID_MAX_] = {
-    [KFS_OPID_QUIT] = handle_quit
 };
 
 /**
@@ -188,8 +122,6 @@ read_readbuffer(client_t c, size_t n)
 static int
 process_operation(client_t c, const char *rawop, size_t opsize)
 {
-    (void) c;
-
     uint16_t net_i = 0;
     uint_t opid = 0;
     ssize_t size = 0;
@@ -625,10 +557,8 @@ create_listen_socket(const char *port)
  * Listen for incoming connections and handle them.
  */
 static int
-run_daemon(char *port, const struct fuse_operations *kenny_oper)
+run_daemon(char *port)
 {
-    (void) kenny_oper;
-
     fd_set allsocks;
     fd_set readset;
     fd_set writeset;
@@ -761,6 +691,7 @@ main(int argc, char *argv[])
 
     ret = 0;
     KFS_INFO("Starting KennyFS version %s.", KFS_VERSION);
+    handlers = get_handlers();
     /* Parse the command line. */
     if (argc == 4) {
         conf.brick = argv[1];
@@ -794,7 +725,8 @@ main(int argc, char *argv[])
         if (ret == 0) {
             /* Run the brick and start the network daemon. */
             kenny_oper = brick_api.getfuncs();
-            ret = run_daemon(conf.port, kenny_oper);
+            init_handlers(kenny_oper);
+            ret = run_daemon(conf.port);
             /* Clean everything up. */
             brick_api.halt();
         }
