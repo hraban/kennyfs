@@ -7,7 +7,7 @@
  * big.
  */
 
-#include "tcp_brick/server/handlers.h"
+#include "tcp_server/handlers.h"
 
 #define FUSE_USE_VERSION 26
 
@@ -15,7 +15,7 @@
 #include <fuse_opt.h>
 
 #include "tcp_brick/tcp_brick.h"
-#include "tcp_brick/server/server.h"
+#include "tcp_server/server.h"
 
 static const struct fuse_operations *oper = NULL;
 

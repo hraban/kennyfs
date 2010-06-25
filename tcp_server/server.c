@@ -18,7 +18,7 @@
  * - Serialized operation (size - 2 bytes).
  */
 
-#include "tcp_brick/server/server.h"
+#include "tcp_server/server.h"
 
 #define FUSE_USE_VERSION 26
 
@@ -37,7 +37,7 @@
 #include "kfs_api.h"
 #include "kfs_misc.h"
 #include "tcp_brick/tcp_brick.h"
-#include "tcp_brick/server/handlers.h"
+#include "tcp_server/handlers.h"
 
 /** The size of per-client read and write buffers. */
 #define BUF_LEN 10

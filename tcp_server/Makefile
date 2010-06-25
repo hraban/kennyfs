@@ -2,9 +2,9 @@ CC ?= gcc
 LINKER ?= $(CC)
 FSLINK ?= ln -fs
 NAME ?= server
-CCARGS := -Wall -O0 -g -Wunused-parameter -fPIC `pkg-config fuse --cflags` -DKFS_LOG_TRACE -I.. -I../..
+CCARGS := -Wall -O0 -g -Wunused-parameter -fPIC `pkg-config fuse --cflags` -DKFS_LOG_TRACE -I..
 CCINCARGS :=
-LINKARGS := `pkg-config fuse --libs` $(wildcard ../../kfs_*.o)
+LINKARGS := `pkg-config fuse --libs` $(wildcard ../kfs_*.o)
 OFILES := server.o handlers.o
 
 FULLCC := $(CC) $(CCARGS) $(CCINCARGS)
