@@ -9,4 +9,4 @@
 .*.swp
 # Names of main binary.
 kennyfs
-kennyfs-network-server
+tcp_brick/server/server

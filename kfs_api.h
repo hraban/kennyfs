@@ -67,7 +67,13 @@ int kfs_brick_addnext(
  * of struct kfs_brick_api and should not be used directly. Use that struct and
  * kfs_brick_getapi_f intead.
  */
-/** Function that constructs a general argument struct. */
+/**
+ * Function that constructs a general argument struct. Returns a pointer to such
+ * a struct which can later be passed to member .init(). After that, calling
+ * .halt() will free the struct passed to .init() (the one returned by
+ * .makearg()).
+ * TODO: Explicit is better than implicit: add a .delarg().
+ */
 typedef struct kfs_brick_arg * (* kfs_brick_makearg_f)();
 /**
  * Function that prepares the brick for operation. N.B.: The scope of the

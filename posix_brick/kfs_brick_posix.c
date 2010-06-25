@@ -60,10 +60,6 @@ struct kfs_brick_posix_arg {
 
 static struct kfs_brick_posix_arg *myconf;
 
-/*
- * Private functions.
- */
-
 /**
  * Convert FUSE fuse_file_info::fh to struct kenny_fh (typecast). I might be
  * wrong, but I believe a simple type cast could introduce errors on
@@ -547,7 +543,7 @@ kfs_brick_posix_char2arg(char *buf, size_t len)
 
     KFS_ENTER();
 
-    KFS_ASSERT(buf != NULL);
+    KFS_ASSERT(buf != NULL && len > 0);
     KFS_ASSERT(buf[len - 1] == '\0');
     arg = private_makearg(buf);
 
@@ -556,25 +552,21 @@ kfs_brick_posix_char2arg(char *buf, size_t len)
 
 /**
  * Serialize an argument to a character array. Returns the size of the new
- * buffer, which must, eventually, be freed. Returns -1 on error, returns the
- * size of the buffer on success.
+ * buffer, which must, eventually, be freed. Returns the size of the buffer on
+ * success, sets the buffer to NULL on failure.
  */
-static ssize_t
+static size_t
 kfs_brick_posix_arg2char(char **buf, const struct kfs_brick_posix_arg *arg)
 {
     ssize_t len = 0;
-    char *serialized = NULL;
 
     KFS_ENTER();
 
     KFS_ASSERT(arg != NULL && buf != NULL);
     len = strlen(arg->path) + 1; /* +1 for the additional '\0' byte. */
-    serialized = KFS_MALLOC(len);
-    if (serialized == NULL) {
-        len = -1;
-    } else {
-        serialized = memcpy(serialized, arg->path, len);
-        *buf = serialized;
+    *buf = KFS_MALLOC(len);
+    if (*buf != NULL) {
+        *buf = memcpy(*buf, arg->path, len);
     }
 
     KFS_RETURN(len);
@@ -588,7 +580,7 @@ kfs_brick_posix_arg2char(char **buf, const struct kfs_brick_posix_arg *arg)
 static struct kfs_brick_arg *
 kenny_makearg(char *path)
 {
-    ssize_t serial_size = 0;
+    size_t serial_size = 0;
     char *serial_buf = NULL;
     struct kfs_brick_posix_arg *arg_specific = NULL;
     struct kfs_brick_arg *arg_generic = NULL;
@@ -602,9 +594,9 @@ kenny_makearg(char *path)
     if (arg_specific != NULL) {
         /* Transform that into a generic arg (serialization). */
         serial_size = kfs_brick_posix_arg2char(&serial_buf, arg_specific);
-        if (serial_size != -1) {
+        if (serial_buf != NULL) {
             arg_generic = KFS_MALLOC(sizeof(*arg_generic));
-            if (serial_size == -1) {
+            if (arg_generic != NULL) {
                 /*
                  * Wrap serialized argument into generic struct. Error checking
                  * happens later.
@@ -614,7 +606,7 @@ kenny_makearg(char *path)
         }
         private_delarg(arg_specific);
     }
-    if (serial_size != -1) {
+    if (arg_generic != NULL) {
         /* Everything went right: construct the generic arg. */
         arg_generic->payload_size = serial_size;
         arg_generic->payload = serial_buf;

@@ -58,40 +58,6 @@ struct kfs_brick_tcp_arg {
 
 static struct kfs_brick_tcp_arg *myconf;
 
-/**
- * Convert FUSE fuse_file_info::fh to struct kenny_fh (typecast). I might be
- * wrong, but I believe a simple type cast could introduce errors on
- * architectures where uint64_t and pointers to (my) structs are aligned
- * differently. Memcpy does not suffer from this limitation.
- */
-static struct kenny_fh *
-fh_fuse2kenny(uint64_t fh)
-{
-    struct kenny_fh *kfh = NULL;
-
-    KFS_ENTER();
-
-    memcpy(&kfh, &fh, min(sizeof(kfh), sizeof(fh)));
-
-    KFS_RETURN(kfh);
-}
-
-/**
- * Convert struct kenny_fh to fuse_file_info::fh (typecast). See
- * fh_fuse2kenny().
- */
-static uint64_t
-fh_kenny2fuse(struct kenny_fh *fh)
-{
-    uint64_t fusefh = 0;
-
-    KFS_ENTER();
-
-    memcpy(&fusefh, &fh, min(sizeof(fusefh), sizeof(fh)));
-
-    KFS_RETURN(fusefh);
-}
-
 /*
  * FUSE API.
  */
@@ -151,12 +117,17 @@ static struct kfs_brick_tcp_arg *
 kfs_brick_tcp_char2arg(char *buf, size_t len)
 {
     struct kfs_brick_tcp_arg *arg = NULL;
+    char *delim1 = NULL;
 
     KFS_ENTER();
 
-    KFS_ASSERT(buf != NULL && len > 0);
+    KFS_ASSERT(buf != NULL && len > 1);
     KFS_ASSERT(buf[len - 1] == '\0');
-    arg = private_makearg(buf);
+    /* The first '\0'-byte, separating hostname from port number. */
+    delim1 = strchr(buf, '\0');
+    /* There must be more than one '\0'-byte. */
+    KFS_ASSERT(delim1 != &(buf[len - 1]));
+    arg = private_makearg(buf, delim1 + 1);
 
     KFS_RETURN(arg);
 }
@@ -188,7 +159,7 @@ kfs_brick_tcp_arg2char(char **buf, const struct kfs_brick_tcp_arg *arg)
         memcpy(*buf + len_hostname, arg->port, len_port);
     }
 
-    KFS_RETURN(len);
+    KFS_RETURN(len_total);
 }
 
 /**
@@ -206,7 +177,7 @@ kenny_makearg(char *hostname, char *port)
 
     KFS_ENTER();
 
-    KFS_ASSERT(path != NULL);
+    KFS_ASSERT(hostname != NULL && port != NULL);
     arg_generic = NULL;
     /* Create a TCP block-specific argument. */
     arg_specific = private_makearg(hostname, port);
