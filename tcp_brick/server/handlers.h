@@ -5,7 +5,7 @@
 
 #include <fuse.h>
 #include <fuse_opt.h>
-#include "network-server/server.h"
+#include "tcp_brick/server/server.h"
 
 typedef int (* handler_t)(client_t c, const char *rawop, size_t opsize);
 

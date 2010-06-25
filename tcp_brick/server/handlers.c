@@ -7,15 +7,15 @@
  * big.
  */
 
-#include "network-server/handlers.h"
+#include "tcp_brick/server/handlers.h"
 
 #define FUSE_USE_VERSION 26
 
 #include <fuse.h>
 #include <fuse_opt.h>
 
-#include "kennyfs-network.h"
-#include "network-server/server.h"
+#include "tcp_brick/tcp_brick.h"
+#include "tcp_brick/server/server.h"
 
 static const struct fuse_operations *oper = NULL;
 
