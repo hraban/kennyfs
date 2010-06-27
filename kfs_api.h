@@ -98,6 +98,6 @@ struct kfs_brick_api {
  * Function that gets API (above three) of a brick. Every KennyFS brick should
  * provide a public function of this type.
  */
-typedef const struct kfs_brick_api (* kfs_brick_getapi_f)(void);
+typedef const struct kfs_brick_api * (* kfs_brick_getapi_f)(void);
 
 #endif /* _KFS_API_H */

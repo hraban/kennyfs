@@ -7,7 +7,7 @@ CCINCARGS :=
 LINKARGS := `pkg-config fuse --libs`
 BRICKS := $(wildcard *_brick/)
 CLEANBRICKS := $(patsubst %/,%_clean,$(BRICKS))
-OFILES := $(patsubst %.c,%.o,$(wildcard kfs_*.c))
+OFILES := $(patsubst %.c,%.o,$(wildcard kfs_*.c)) minIni/minIni.o
 SOFILES := $(patsubst %,libkfs_brick_%.so,$(patsubst %_brick/,%,$(BRICKS)))
 
 FULLCC := $(CC) $(CCARGS) $(CCINCARGS)
@@ -18,7 +18,7 @@ FULLLINK := $(LINKER) $(LINKARGS)
 all: $(NAME) $(SOFILES) $(SUBDIRS)
 
 clean: $(CLEANBRICKS)
-	rm -f $(NAME) *.o lib*.so.?.? lib*.so.? lib*.so
+	rm -f $(NAME) $(OFILES) $(SOFILES) lib*.so*
 
 $(NAME): $(OFILES) $(NAME).o
 	$(FULLLINK) -o $@ $(OFILES) $(NAME).o

@@ -347,7 +347,7 @@ kenny_opendir(const char *fusepath, struct fuse_file_info *fi)
 
     ret = 0;
     fh = KFS_MALLOC(sizeof(*fh));
-    if (fh == NULL || fullpath == NULL) {
+    if (fh == NULL) {
         KFS_ERROR("malloc: %s", strerror(errno));
         ret = -errno;
     } else {
@@ -595,14 +595,11 @@ kenny_makearg(char *path)
         /* Transform that into a generic arg (serialization). */
         serial_size = kfs_brick_posix_arg2char(&serial_buf, arg_specific);
         if (serial_buf != NULL) {
-            arg_generic = KFS_MALLOC(sizeof(*arg_generic));
-            if (arg_generic != NULL) {
-                /*
-                 * Wrap serialized argument into generic struct. Error checking
-                 * happens later.
-                 */
-                arg_generic = kfs_brick_makearg(serial_buf, serial_size);
-            }
+            /*
+             * Wrap serialized argument into generic struct. Error checking
+             * happens later.
+             */
+            arg_generic = kfs_brick_makearg(serial_buf, serial_size);
         }
         private_delarg(arg_specific);
     }
@@ -682,10 +679,10 @@ static const struct kfs_brick_api kenny_api = {
  * has the generic KennyFS backend name expected by frontends. Do not put this
  * in the header-file but extract it with dynamic linking.
  */
-const struct kfs_brick_api
+const struct kfs_brick_api *
 kfs_brick_getapi(void)
 {
     KFS_ENTER();
 
-    KFS_RETURN(kenny_api);
+    KFS_RETURN(&kenny_api);
 }

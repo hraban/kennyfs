@@ -65,6 +65,14 @@ static struct kfs_brick_tcp_arg *myconf;
 static const struct fuse_operations kenny_oper = {
 };
 
+static int
+connect_to_server(void)
+{
+    KFS_ENTER();
+
+    KFS_RETURN(-1);
+}
+
 /**
  * Create a new arg struct, specific for the TCP brick.
  * TODO: could use a better name.
@@ -215,6 +223,8 @@ kenny_makearg(char *hostname, char *port)
 static int
 kenny_init(struct kfs_brick_arg *generic)
 {
+    int ret = 0;
+
     KFS_ENTER();
 
     KFS_ASSERT(generic != NULL);
@@ -222,11 +232,13 @@ kenny_init(struct kfs_brick_arg *generic)
     myconf = kfs_brick_tcp_char2arg(generic->payload, generic->payload_size);
     if (myconf == NULL) {
         KFS_ERROR("Initializing TCP brick failed.");
-        KFS_RETURN(-1);
+        ret = -1;
+    } else {
+        /* TODO: Open a connection to the server. */
+        ret = connect_to_server();
     }
-    /* TODO: Open a connection to the server. */
 
-    KFS_RETURN(0);
+    KFS_RETURN(ret);
 }
 
 /*
@@ -269,10 +281,10 @@ static const struct kfs_brick_api kenny_api = {
  * has the generic KennyFS backend name expected by frontends. Do not put this
  * in the header-file but extract it with dynamic linking.
  */
-const struct kfs_brick_api
+const struct kfs_brick_api *
 kfs_brick_getapi(void)
 {
     KFS_ENTER();
 
-    KFS_RETURN(kenny_api);
+    KFS_RETURN(&kenny_api);
 }

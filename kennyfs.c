@@ -12,18 +12,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "minIni/minIni.h"
+
 #include "kfs.h"
 #include "kfs_api.h"
 #include "kfs_misc.h"
 
 #define KENNYFS_OPT(t, p, v) {t, offsetof(struct kenny_conf, p), v}
+#define CONFIG_FILE "kennyfs.ini"
 
 /**
  * Configuration variables.
  */
 struct kenny_conf {
-    char *path;
-    char *brick;
+    char *kfsconf;
 };
 
 enum {
@@ -31,12 +33,35 @@ enum {
     KEY_VERSION,
 };
 
+enum {
+    BRICK_POSIX,
+    BRICK_TCP,
+    _BRICK_NUM,
+};
+
+/**
+ * Function that prepares an argument for a brick. The argument is a struct
+ * that is specific for this brick but that is serialized as a generic argument
+ * (part of the kennyfs API).
+ */
+typedef struct kfs_brick_arg * (* brick_preparer_t)
+                        (const struct kfs_brick_api *, const char *);
+
+const char * const BRICK_NAMES[] = {
+    [BRICK_POSIX] = "posix",
+    [BRICK_TCP] = "tcp",
+};
+
+const char * const BRICK_PATHS[] = {
+    [BRICK_POSIX] = "./libkfs_brick_posix.so",
+    [BRICK_TCP] = "./libkfs_brick_tcp.so",
+};
+
 /**
  * Options accepted by this frontend's command-line parser.
  */
 static struct fuse_opt kenny_opts[] = {
-    KENNYFS_OPT("path=%s", path, 0),
-    KENNYFS_OPT("brick=%s", brick, 0),
+    KENNYFS_OPT("kfsconf=%s", kfsconf, 0),
     FUSE_OPT_KEY("-h", KEY_HELP),
     FUSE_OPT_KEY("--help", KEY_HELP),
     FUSE_OPT_KEY("-v", KEY_VERSION),
@@ -44,10 +69,35 @@ static struct fuse_opt kenny_opts[] = {
     FUSE_OPT_END
 };
 
-/*
- * ***** Private functions. *****
- */
+/** Default location of the kennyfs configuration file. */
+const char KFSCONF_DEFAULT_PATH[] = "kennyfs.ini";
+/** Global reference to dynamically loaded library. TODO: Unnecessary global. */
+void *lib_handle = NULL;
 
+/**
+ * Get the path corresponding to given brick name. On success the brickpath
+ * argument is set to point to the path and a unique ID for this brick is
+ * returned. On error the pointer will point to NULL and the return value is
+ * unspecified.
+ */
+static unsigned int
+get_brick_path(const char brickname[], const char **brickpath)
+{
+    unsigned int i = 0;
+
+    KFS_ENTER();
+
+    KFS_ASSERT(brickpath != NULL && brickname != NULL && brickname[0] != '\0');
+    *brickpath = NULL;
+    for (i = 0; i < _BRICK_NUM; i++) {
+        if (strcmp(brickname, BRICK_NAMES[i]) == 0) {
+            *brickpath = BRICK_PATHS[i];
+            break;
+        }
+    }
+
+    KFS_RETURN(i);
+}
 
 /**
  * Process command line arguments.
@@ -75,7 +125,7 @@ kenny_opt_proc(void *data, const char *arg, int key, struct fuse_args *outargs)
                 "    -V   --version   print version\n"
                 "\n"
                 "KennyFS options:\n"
-                "    -o path=PATH     path to mirror\n"
+                "    -o kfsconf=PATH  configuration file\n"
                 "\n",
                 outargs->argv[0]);
         fuse_opt_add_arg(outargs, "-ho");
@@ -87,62 +137,72 @@ kenny_opt_proc(void *data, const char *arg, int key, struct fuse_args *outargs)
 }
 
 /**
- * Start up the POSIX backend. Returns 0 on success, -1 on error.
+ * Prepare an argument for the POSIX backend. Returns NULL on error.
  */
-static int
-prepare_posix_backend(struct kfs_brick_api *api, char *path)
+static struct kfs_brick_arg *
+prepare_posix_backend(const struct kfs_brick_api *api, const char *conffile)
 {
     struct kfs_brick_arg *arg = NULL;
+    char path[256] = {'\0'};
     int ret = 0;
 
-    KFS_ASSERT(api != NULL && path != NULL);
-    /* Prepare for initialization of the brick: construct its argument. */
-    arg = api->makearg(path);
-    if (arg == NULL) {
-        KFS_ERROR("Preparing brick failed.");
-        ret = -1;
-    } else {
-        /* Arguments ready: now initialize the brick. */
-        ret = api->init(arg);
-        if (ret != 0) {
-            KFS_ERROR("Brick could not start: code %d.", ret);
-            ret = -1;
-        }
-        /* Initialization is over, free the argument. */
-        arg = kfs_brick_delarg(arg);
+    KFS_ENTER();
+
+    arg = NULL;
+    KFS_ASSERT(api != NULL && conffile != NULL);
+    ret = ini_gets("brick_root", "path", NULL, path, NUMELEM(path), conffile);
+    if (ret != 0) {
+        /* Prepare for initialization of the brick: construct its argument. */
+        arg = api->makearg(path);
     }
 
-    return ret;
+    KFS_RETURN(arg);
 }
 
-int
-main(int argc, char *argv[])
-{
-    struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
-    struct kenny_conf conf;
-    struct kfs_brick_api posixbrick_api;
-    int ret = 0;
-    const struct fuse_operations *kenny_oper = NULL;
-    kfs_brick_getapi_f posixbrick_getapi_f = NULL;
-    void *lib_handle = NULL;
-    char *errorstr = NULL;
+const brick_preparer_t brick_preparers[] = {
+    [BRICK_POSIX] = prepare_posix_backend,
+    [BRICK_TCP] = NULL,
+};
 
-    ret = 0;
-    KFS_INFO("Starting KennyFS version %s.", KFS_VERSION);
-    /* Parse the command line. */
-    memset(&conf, 0, sizeof(conf));
-    ret = fuse_opt_parse(&args, &conf, kenny_opts, kenny_opt_proc);
-    if (conf.path == NULL || conf.brick == NULL) {
-        KFS_ERROR("Error parsing commandline. See %s --help.", argv[0]);
+/**
+ * Get a pointer to the API for the root brick and initialise all bricks in the
+ * chain.
+ */
+static const struct kfs_brick_api *
+get_root_brick(const char *conffile)
+{
+    char brickname[16] = {'\0'};
+    kfs_brick_getapi_f brick_getapi_f = NULL;
+    const struct kfs_brick_api *brick_api = NULL;
+    const char *brickpath = NULL;
+    char *errorstr = NULL;
+    brick_preparer_t preparer = NULL;
+    struct kfs_brick_arg *arg = NULL;
+    unsigned int brick = 0;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    /* Read the configuration file. */
+    ret = ini_gets("brick_root", "type", NULL, brickname, NUMELEM(brickname),
+            conffile);
+    if (ret == 0) {
         ret = -1;
+    } else {
+        ret = 0;
+        brick = get_brick_path(brickname, &brickpath);
+        if (brickpath == NULL) {
+            KFS_ERROR("Brick type not regocnized: '%s'.", brickname);
+            ret = -1;
+        }
     }
     if (ret == 0) {
         /* Load the brick. */
-        lib_handle = dlopen(conf.brick, RTLD_NOW | RTLD_LOCAL);
+        lib_handle = dlopen(brickpath, RTLD_NOW | RTLD_LOCAL);
         if (lib_handle != NULL) {
-            posixbrick_getapi_f = dlsym(lib_handle, "kfs_brick_getapi");
-            if (posixbrick_getapi_f != NULL) {
-                posixbrick_api = posixbrick_getapi_f();
+            brick_getapi_f = dlsym(lib_handle, "kfs_brick_getapi");
+            if (brick_getapi_f != NULL) {
+                brick_api = brick_getapi_f();
             } else {
                 ret = -1;
             }
@@ -155,22 +215,99 @@ main(int argc, char *argv[])
         }
     }
     if (ret == 0) {
-        ret = prepare_posix_backend(&posixbrick_api, conf.path);
+        preparer = brick_preparers[brick];
+        if (preparer == NULL) {
+            KFS_WARNING("Brick %s not supported as root brick yet.", brickname);
+            ret = -1;
+        }
+    }
+    if (ret == 0) {
+        arg = preparer(brick_api, conffile);
+        if (arg == NULL) {
+            KFS_ERROR("Preparing brick failed.");
+            ret = -1;
+        }
+    }
+    if (ret == 0) {
+        /* Arguments ready: now initialize the brick. */
+        ret = brick_api->init(arg);
+        if (ret != 0) {
+            KFS_ERROR("Brick could not start: code %d.", ret);
+            ret = -1;
+        }
+        /* Initialisation is over, free the argument. */
+        arg = kfs_brick_delarg(arg);
+    }
+    if (ret != 0) {
+        brick_api = NULL;
+    }
+
+    KFS_RETURN(brick_api);
+}
+
+/**
+ * Clean up resources opened by get_root_brick().
+ */
+void
+del_root_brick(const struct kfs_brick_api *brick_api)
+{
+    int ret = 0;
+
+    KFS_ENTER();
+    brick_api->halt();
+    KFS_ASSERT(lib_handle != NULL);
+
+    ret = dlclose(lib_handle);
+    if (ret != 0) {
+        KFS_WARNING("Failed to close dynamically loaded library: %s",
+                dlerror());
+    }
+
+    KFS_RETURN();
+}
+
+int
+main(int argc, char *argv[])
+{
+    struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
+    struct kenny_conf conf;
+    int ret = 0;
+    const struct fuse_operations *kenny_oper = NULL;
+    const struct kfs_brick_api *brick_api = NULL;
+    const char *kfsconf = NULL;
+
+    KFS_ENTER();
+
+    ret = 0;
+    KFS_INFO("Starting KennyFS version %s.", KFS_VERSION);
+    /* Parse the command line. */
+    memset(&conf, 0, sizeof(conf));
+    ret = fuse_opt_parse(&args, &conf, kenny_opts, kenny_opt_proc);
+    kfsconf = conf.kfsconf;
+    if (kfsconf == NULL) {
+        kfsconf = KFSCONF_DEFAULT_PATH;
+    }
+    if (ret == 0) {
+        brick_api = get_root_brick(kfsconf);
+        if (brick_api == NULL) {
+            ret = -1;
+        }
     }
     if (ret == 0) {
         /* Run the brick and start FUSE. */
-        kenny_oper = posixbrick_api.getfuncs();
+        kenny_oper = brick_api->getfuncs();
         ret = fuse_main(args.argc, args.argv, kenny_oper, NULL);
         /* Clean everything up. */
         fuse_opt_free_args(&args);
-        posixbrick_api.halt();
-        dlclose(lib_handle);
+        del_root_brick(brick_api);
     }
     if (ret == 0) {
         KFS_INFO("KennyFS exited succesfully.");
-        exit(EXIT_SUCCESS);
+        ret = EXIT_SUCCESS;
     } else {
         KFS_WARNING("KennyFS exited with value %d.", ret);
-        exit(EXIT_FAILURE);
+        ret = EXIT_FAILURE;
     }
+
+    KFS_RETURN(ret);
 }
