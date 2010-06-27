@@ -69,7 +69,7 @@ static struct fuse_opt kenny_opts[] = {
 };
 
 /** Default location of the kennyfs configuration file. */
-const char KFSCONF_DEFAULT_PATH[] = "kennyfs.ini";
+const char KFSCONF_DEFAULT_PATH[] = "~/.kennyfs.ini";
 /** Global reference to dynamically loaded library. TODO: Unnecessary global. */
 void *lib_handle = NULL;
 
@@ -185,6 +185,7 @@ get_root_brick(const char *conffile)
     ret = ini_gets("brick_root", "type", "", brickname, NUMELEM(brickname),
             conffile);
     if (ret == 0) {
+        KFS_ERROR("Failed to parse configuration file %s", conffile);
         KFS_RETURN(NULL);
     }
     ret = 0;
@@ -248,48 +249,80 @@ del_root_brick(const struct kfs_brick_api *brick_api)
     KFS_RETURN();
 }
 
-int
-main(int argc, char *argv[])
+/**
+ * "Real" main() function, actual main() is just a wrapper for debugging the
+ * return value.
+ */
+static int
+main_(int argc, char *argv[])
 {
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
     struct kenny_conf conf;
     int ret = 0;
     const struct fuse_operations *kenny_oper = NULL;
     const struct kfs_brick_api *brick_api = NULL;
-    const char *kfsconf = NULL;
+    const char *homedir = NULL;
+    char *kfsconf = NULL;
+    void *p = NULL;
 
     KFS_ENTER();
 
-    ret = 0;
     KFS_INFO("Starting KennyFS version %s.", KFS_VERSION);
     /* Parse the command line. */
     memset(&conf, 0, sizeof(conf));
     ret = fuse_opt_parse(&args, &conf, kenny_opts, kenny_opt_proc);
-    kfsconf = conf.kfsconf;
-    if (kfsconf == NULL) {
-        kfsconf = KFSCONF_DEFAULT_PATH;
+    if (ret == -1) {
+        KFS_ERROR("Parsing options failed.");
+        KFS_RETURN(-1);
     }
-    if (ret == 0) {
-        brick_api = get_root_brick(kfsconf);
-        if (brick_api == NULL) {
-            ret = -1;
-        }
-    }
-    if (ret == 0) {
-        /* Run the brick and start FUSE. */
-        kenny_oper = brick_api->getfuncs();
-        ret = fuse_main(args.argc, args.argv, kenny_oper, NULL);
-        /* Clean everything up. */
-        fuse_opt_free_args(&args);
-        del_root_brick(brick_api);
-    }
-    if (ret == 0) {
-        KFS_INFO("KennyFS exited succesfully.");
-        ret = EXIT_SUCCESS;
+    if (conf.kfsconf != NULL) {
+        kfsconf = kfs_strcpy(conf.kfsconf);
     } else {
-        KFS_WARNING("KennyFS exited with value %d.", ret);
-        ret = EXIT_FAILURE;
+        kfsconf = kfs_strcpy(KFSCONF_DEFAULT_PATH);
     }
+    /* Expand tilde to user's home dir. */
+    if (kfsconf[0] == '~') {
+        homedir = getenv("HOME");
+        if (homedir == NULL) {
+            KFS_ERROR("Configuration file specified with ~ but environment "
+                      "variable HOME is not set.");
+            fuse_opt_free_args(&args);
+            KFS_RETURN(-1);
+        }
+        p = kfsconf;
+        kfsconf = kfs_strcat(homedir, kfsconf + 1);
+        p = KFS_FREE(p);
+    }
+    brick_api = get_root_brick(kfsconf);
+    if (brick_api == NULL) {
+        fuse_opt_free_args(&args);
+        kfsconf = KFS_FREE(kfsconf);
+        KFS_RETURN(-1);
+    }
+    /* Run the brick and start FUSE. */
+    kenny_oper = brick_api->getfuncs();
+    ret = fuse_main(args.argc, args.argv, kenny_oper, NULL);
+    /* Clean everything up. */
+    del_root_brick(brick_api);
+    fuse_opt_free_args(&args);
+    kfsconf = KFS_FREE(kfsconf);
 
     KFS_RETURN(ret);
+}
+
+int
+main(int argc, char *argv[])
+{
+    int ret = 0;
+
+    ret = main_(argc, argv);
+    if (ret == 0) {
+        KFS_INFO("KennyFS exited succesfully.");
+        exit(EXIT_SUCCESS);
+    } else {
+        KFS_WARNING("KennyFS exited with value %d.", ret);
+        exit(EXIT_FAILURE);
+    }
+
+    return -1;
 }

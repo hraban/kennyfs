@@ -1,14 +1,14 @@
 CC ?= gcc
 LINKER ?= $(CC)
 FSLINK ?= ln -fs
-CCARGS += -fPIC -I..
+CFLAGS += -fPIC -I..
 CCINCARGS :=
 LINKARGS := `pkg-config fuse --libs` $(wildcard ../kfs_*.o)
 BRICKS := $(wildcard kfs_brick_*.c)
 OFILES := $(patsubst %.c,%.o,$(filter-out $(BRICKS),$(wildcard kfs_*.c)))
 SOFILES := $(patsubst %.c,lib%.so,$(BRICKS))
 
-FULLCC := $(CC) $(CCARGS) $(CCINCARGS)
+FULLCC := $(CC) $(CFLAGS) $(CCINCARGS)
 FULLLINK := $(LINKER) $(LINKARGS)
 
 .PHONY: all clean

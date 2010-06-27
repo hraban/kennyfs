@@ -2,12 +2,12 @@ CC ?= gcc
 LINKER ?= $(CC)
 FSLINK ?= ln -fs
 NAME ?= server
-CCARGS += -fPIC -I..
+CFLAGS += -fPIC -I..
 CCINCARGS :=
 LINKARGS := `pkg-config fuse --libs` $(wildcard ../kfs_*.o)
 OFILES := server.o handlers.o
 
-FULLCC := $(CC) $(CCARGS) $(CCINCARGS)
+FULLCC := $(CC) $(CFLAGS) $(CCINCARGS)
 FULLLINK := $(LINKER) $(LINKARGS)
 
 .PHONY: all clean

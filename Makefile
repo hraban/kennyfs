@@ -2,14 +2,14 @@ CC ?= gcc
 LINKER ?= $(CC)
 FSLINK ?= ln -fs
 NAME ?= kennyfs
-export CCARGS += -Wall -O0 -g -Wunused-parameter `pkg-config fuse --cflags`
+export CFLAGS += -Wall -O0 -g -Wunused-parameter `pkg-config fuse --cflags`
 CCINCARGS :=
 LINKARGS := `pkg-config fuse --libs`
 BRICKS := $(patsubst %_brick/,%,$(wildcard *_brick/))
 CLEANBRICKS := $(patsubst %,%_clean,$(BRICKS))
 OFILES := $(patsubst %.c,%.o,$(wildcard kfs_*.c)) minIni/minIni.o
 
-FULLCC := $(CC) $(CCARGS) $(CCINCARGS)
+FULLCC := $(CC) $(CFLAGS) $(CCINCARGS)
 FULLLINK := $(LINKER) $(LINKARGS)
 
 .PHONY: all clean $(BRICKS) $(CLEANBRICKS)
