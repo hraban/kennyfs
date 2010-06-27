@@ -23,6 +23,8 @@ kfs_brick_makepassport(char *sopath)
 {
     struct kfs_brick_passport *passp = NULL;
 
+    KFS_ENTER();
+
     KFS_ASSERT(sopath != NULL);
     passp = KFS_MALLOC(sizeof(*passp));
     if (passp == NULL) {
@@ -31,7 +33,7 @@ kfs_brick_makepassport(char *sopath)
         passp->sopath = sopath;
     }
 
-    return passp;
+    KFS_RETURN(passp);
 }
 
 /**
@@ -40,11 +42,13 @@ kfs_brick_makepassport(char *sopath)
 struct kfs_brick_passport *
 kfs_brick_delpassport(struct kfs_brick_passport *passp)
 {
+    KFS_ENTER();
+
     KFS_ASSERT(passp != NULL && passp->sopath != NULL);
     passp->sopath = KFS_FREE(passp->sopath);
     passp = KFS_FREE(passp);
 
-    return passp;
+    KFS_RETURN(passp);
 }
 
 /**
@@ -62,6 +66,8 @@ kfs_brick_makearg(char *payload, size_t payload_size)
 {
     struct kfs_brick_arg *arg = NULL;
 
+    KFS_ENTER();
+
     /* Either they both are zero, or they both are not: */
     KFS_ASSERT(!xor(payload == NULL, payload_size == 0));
     arg = KFS_MALLOC(sizeof(*arg));
@@ -75,7 +81,7 @@ kfs_brick_makearg(char *payload, size_t payload_size)
         arg->next_args = NULL;
     }
 
-    return arg;
+    KFS_RETURN(arg);
 }
 
 /**
@@ -86,6 +92,8 @@ struct kfs_brick_arg *
 kfs_brick_delarg(struct kfs_brick_arg *arg)
 {
     size_t i = 0;
+
+    KFS_ENTER();
 
     KFS_ASSERT(arg != NULL);
     for (i = 0; i < arg->num_next_bricks; i++) {
@@ -106,7 +114,7 @@ kfs_brick_delarg(struct kfs_brick_arg *arg)
     }
     arg = KFS_FREE(arg);
 
-    return arg;
+    KFS_RETURN(arg);
 }
 
 /**
@@ -123,6 +131,8 @@ kfs_brick_addnext(
 {
     size_t allocsize = 0;
     int ret = 0;
+
+    KFS_ENTER();
 
     KFS_ASSERT(arg != NULL && arg->next_bricks != NULL);
     KFS_ASSERT(next_brick != NULL && next_arg != NULL);
@@ -148,5 +158,5 @@ kfs_brick_addnext(
         ret = 0;
     }
 
-    return ret;
+    KFS_RETURN(ret);
 }
