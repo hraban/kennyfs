@@ -1,7 +1,7 @@
 CC ?= gcc
 LINKER ?= $(CC)
 FSLINK ?= ln -fs
-CCARGS := -Wall -O0 -g -Wunused-parameter -fPIC `pkg-config fuse --cflags` -DKFS_LOG_TRACE -I..
+CCARGS += -fPIC -I..
 CCINCARGS :=
 LINKARGS := `pkg-config fuse --libs` $(wildcard ../kfs_*.o)
 BRICKS := $(wildcard kfs_brick_*.c)
@@ -16,10 +16,12 @@ FULLLINK := $(LINKER) $(LINKARGS)
 all: $(SOFILES)
 
 clean:
-	rm -f *.o lib*.so.?.? lib*.so.? lib*.so
+	rm -f *.o lib*.so*
 
-lib%.so: %.o
+lib%.so: %.o $(OFILES)
 	$(FULLLINK) -shared -Wl,-soname,$@.0 $< -o $@.0.0 $(OFILES)
+	$(FSLINK) $@.0.0 $@.0
+	$(FSLINK) $@.0.0 $@
 
 %.o: %.c
 	$(FULLCC) -c $*.c -o $@

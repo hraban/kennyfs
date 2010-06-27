@@ -648,7 +648,7 @@ run_daemon(char *port)
  * Start up the POSIX backend. Returns 0 on success, -1 on error.
  */
 static int
-prepare_posix_backend(struct kfs_brick_api *api, char *path)
+prepare_posix_backend(const struct kfs_brick_api *api, char *path)
 {
     struct kfs_brick_arg *arg = NULL;
     int ret = 0;
@@ -679,8 +679,8 @@ int
 main(int argc, char *argv[])
 {
     struct kenny_conf conf;
-    struct kfs_brick_api brick_api;
     int ret = 0;
+    const struct kfs_brick_api *brick_api = NULL;
     const struct fuse_operations *kenny_oper = NULL;
     kfs_brick_getapi_f brick_getapi_f = NULL;
     void *lib_handle = NULL;
@@ -720,14 +720,14 @@ main(int argc, char *argv[])
         }
     }
     if (ret == 0) {
-        ret = prepare_posix_backend(&brick_api, conf.path);
+        ret = prepare_posix_backend(brick_api, conf.path);
         if (ret == 0) {
             /* Run the brick and start the network daemon. */
-            kenny_oper = brick_api.getfuncs();
+            kenny_oper = brick_api->getfuncs();
             init_handlers(kenny_oper);
             ret = run_daemon(conf.port);
             /* Clean everything up. */
-            brick_api.halt();
+            brick_api->halt();
         }
         dlclose(lib_handle);
     }

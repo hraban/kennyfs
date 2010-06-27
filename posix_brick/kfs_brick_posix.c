@@ -354,11 +354,13 @@ kenny_opendir(const char *fusepath, struct fuse_file_info *fi)
         fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath,
                 NUMELEM(pathbuf));
         KFS_DEBUG("Opening directory %s.", fullpath);
-        fi->fh = fh_kenny2fuse(fh);
         fh->dir = opendir(fullpath);
         if (fh->dir == NULL) {
             KFS_ERROR("opendir: %s", strerror(errno));
             ret = -errno;
+            fh = KFS_FREE(fh);
+        } else {
+            fi->fh = fh_kenny2fuse(fh);
         }
         if (fullpath != pathbuf) {
             fullpath = KFS_FREE(fullpath);

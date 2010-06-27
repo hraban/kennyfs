@@ -19,7 +19,6 @@
 #include "kfs_misc.h"
 
 #define KENNYFS_OPT(t, p, v) {t, offsetof(struct kenny_conf, p), v}
-#define CONFIG_FILE "kennyfs.ini"
 
 /**
  * Configuration variables.
@@ -53,8 +52,8 @@ const char * const BRICK_NAMES[] = {
 };
 
 const char * const BRICK_PATHS[] = {
-    [BRICK_POSIX] = "./libkfs_brick_posix.so",
-    [BRICK_TCP] = "./libkfs_brick_tcp.so",
+    [BRICK_POSIX] = "posix_brick/libkfs_brick_posix.so",
+    [BRICK_TCP] = "tcp_brick/libkfs_brick_tcp.so",
 };
 
 /**
@@ -150,7 +149,7 @@ prepare_posix_backend(const struct kfs_brick_api *api, const char *conffile)
 
     arg = NULL;
     KFS_ASSERT(api != NULL && conffile != NULL);
-    ret = ini_gets("brick_root", "path", NULL, path, NUMELEM(path), conffile);
+    ret = ini_gets("brick_root", "path", "", path, NUMELEM(path), conffile);
     if (ret != 0) {
         /* Prepare for initialization of the brick: construct its argument. */
         arg = api->makearg(path);
@@ -175,7 +174,6 @@ get_root_brick(const char *conffile)
     kfs_brick_getapi_f brick_getapi_f = NULL;
     const struct kfs_brick_api *brick_api = NULL;
     const char *brickpath = NULL;
-    char *errorstr = NULL;
     brick_preparer_t preparer = NULL;
     struct kfs_brick_arg *arg = NULL;
     unsigned int brick = 0;
@@ -184,63 +182,47 @@ get_root_brick(const char *conffile)
     KFS_ENTER();
 
     /* Read the configuration file. */
-    ret = ini_gets("brick_root", "type", NULL, brickname, NUMELEM(brickname),
+    ret = ini_gets("brick_root", "type", "", brickname, NUMELEM(brickname),
             conffile);
     if (ret == 0) {
-        ret = -1;
-    } else {
-        ret = 0;
-        brick = get_brick_path(brickname, &brickpath);
-        if (brickpath == NULL) {
-            KFS_ERROR("Brick type not regocnized: '%s'.", brickname);
-            ret = -1;
-        }
+        KFS_RETURN(NULL);
     }
-    if (ret == 0) {
-        /* Load the brick. */
-        lib_handle = dlopen(brickpath, RTLD_NOW | RTLD_LOCAL);
-        if (lib_handle != NULL) {
-            brick_getapi_f = dlsym(lib_handle, "kfs_brick_getapi");
-            if (brick_getapi_f != NULL) {
-                brick_api = brick_getapi_f();
-            } else {
-                ret = -1;
-            }
-        } else {
-            ret = -1;
-        }
-        errorstr = dlerror();
-        if (errorstr != NULL) {
-            KFS_ERROR("Loading brick failed: %s", errorstr);
-        }
+    ret = 0;
+    brick = get_brick_path(brickname, &brickpath);
+    if (brickpath == NULL) {
+        KFS_ERROR("Brick type not regocnized: '%s'.", brickname);
+        KFS_RETURN(NULL);
     }
-    if (ret == 0) {
-        preparer = brick_preparers[brick];
-        if (preparer == NULL) {
-            KFS_WARNING("Brick %s not supported as root brick yet.", brickname);
-            ret = -1;
-        }
+    /* Load the brick. */
+    lib_handle = dlopen(brickpath, RTLD_NOW | RTLD_LOCAL);
+    if (lib_handle == NULL) {
+        KFS_ERROR("Loading brick failed: %s", dlerror());
+        KFS_RETURN(NULL);
     }
-    if (ret == 0) {
-        arg = preparer(brick_api, conffile);
-        if (arg == NULL) {
-            KFS_ERROR("Preparing brick failed.");
-            ret = -1;
-        }
+    brick_getapi_f = dlsym(lib_handle, "kfs_brick_getapi");
+    if (brick_getapi_f == NULL) {
+        KFS_ERROR("Loading brick failed: %s", dlerror());
+        KFS_RETURN(NULL);
     }
-    if (ret == 0) {
-        /* Arguments ready: now initialize the brick. */
-        ret = brick_api->init(arg);
-        if (ret != 0) {
-            KFS_ERROR("Brick could not start: code %d.", ret);
-            ret = -1;
-        }
-        /* Initialisation is over, free the argument. */
-        arg = kfs_brick_delarg(arg);
+    brick_api = brick_getapi_f();
+    preparer = brick_preparers[brick];
+    if (preparer == NULL) {
+        KFS_ERROR("Brick %s not supported as root brick yet.", brickname);
+        KFS_RETURN(NULL);
     }
+    arg = preparer(brick_api, conffile);
+    if (arg == NULL) {
+        KFS_ERROR("Preparing brick failed.");
+        KFS_RETURN(NULL);
+    }
+    /* Arguments ready: now initialize the brick. */
+    ret = brick_api->init(arg);
     if (ret != 0) {
+        KFS_ERROR("Brick could not start: code %d.", ret);
         brick_api = NULL;
     }
+    /* Initialisation is over, free the argument. */
+    arg = kfs_brick_delarg(arg);
 
     KFS_RETURN(brick_api);
 }

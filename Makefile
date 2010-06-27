@@ -2,37 +2,33 @@ CC ?= gcc
 LINKER ?= $(CC)
 FSLINK ?= ln -fs
 NAME ?= kennyfs
-CCARGS := -Wall -O0 -g -Wunused-parameter -fPIC `pkg-config fuse --cflags` -DKFS_LOG_TRACE
+export CCARGS += -Wall -O0 -g -Wunused-parameter `pkg-config fuse --cflags`
 CCINCARGS :=
 LINKARGS := `pkg-config fuse --libs`
-BRICKS := $(wildcard *_brick/)
-CLEANBRICKS := $(patsubst %/,%_clean,$(BRICKS))
+BRICKS := $(patsubst %_brick/,%,$(wildcard *_brick/))
+CLEANBRICKS := $(patsubst %,%_clean,$(BRICKS))
 OFILES := $(patsubst %.c,%.o,$(wildcard kfs_*.c)) minIni/minIni.o
-SOFILES := $(patsubst %,libkfs_brick_%.so,$(patsubst %_brick/,%,$(BRICKS)))
 
 FULLCC := $(CC) $(CCARGS) $(CCINCARGS)
 FULLLINK := $(LINKER) $(LINKARGS)
 
 .PHONY: all clean $(BRICKS) $(CLEANBRICKS)
 
-all: $(NAME) $(SOFILES) $(SUBDIRS)
+all: $(NAME) $(BRICKS) 
+	$(MAKE) -C tcp_server
 
 clean: $(CLEANBRICKS)
-	rm -f $(NAME) $(OFILES) $(SOFILES) lib*.so*
+	$(MAKE) -C tcp_server clean
+	rm -f $(NAME) $(OFILES) *.o lib*.so*
 
 $(NAME): $(OFILES) $(NAME).o
 	$(FULLLINK) -o $@ $(OFILES) $(NAME).o
 
-$(BRICKS): %:
-	$(MAKE) -C $@
-
 $(CLEANBRICKS): %_clean:
-	$(MAKE) -C $* clean
+	$(MAKE) -C $*_brick/ clean
 
-libkfs_brick_%.so: %_brick/
-	$(FSLINK) $*_brick/$@.0.0 $@
-	$(FSLINK) $*_brick/$@.0.0 $@.0
-	$(FSLINK) $*_brick/$@.0.0 $@.0.0
+$(BRICKS): %:
+	$(MAKE) -C $@_brick/
 
 %.o: %.c
 	$(FULLCC) -c $*.c -o $@

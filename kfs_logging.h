@@ -9,14 +9,14 @@
 /**
  * Defines logging functions for the KennyFS project. Provides the following
  * levels:
- * - KFS_LOGGING_TRACE
- * - KFS_LOGGING_DEBUG
- * - KFS_LOGGING_INFO
- * - KFS_LOGGING_WARNING
- * - KFS_LOGGING_ERROR
- * - KFS_LOGGING_SILENT
+ * - KFS_LOG_TRACE
+ * - KFS_LOG_DEBUG
+ * - KFS_LOG_INFO
+ * - KFS_LOG_WARNING
+ * - KFS_LOG_ERROR
+ * - KFS_LOG_SILENT
  * Logging functions are available for the first five levels: KFS_DEBUG(),
- * KFS_INFO(), etc.  The KFS_LOGGING_LEVEL macro can be used to select which
+ * KFS_INFO(), etc.  The KFS_LOG_<LEVEL> macro can be used to select which
  * functions are defined. If NDEBUG is defined the default logging level is
  * WARNING, otherwise it is DEBUG.
  */
