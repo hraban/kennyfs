@@ -69,10 +69,8 @@ int kfs_brick_addnext(
  */
 /**
  * Function that constructs a general argument struct. Returns a pointer to such
- * a struct which can later be passed to member .init(). After that, calling
- * .halt() will free the struct passed to .init() (the one returned by
- * .makearg()).
- * TODO: Explicit is better than implicit: add a .delarg().
+ * a struct which can later be passed to member .init(). General argument
+ * structs can be freed with kfs_brick_delarg().
  */
 typedef struct kfs_brick_arg * (* kfs_brick_makearg_f)();
 /**

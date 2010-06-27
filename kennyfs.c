@@ -153,6 +153,38 @@ prepare_posix_backend(const struct kfs_brick_api *api, const char *conffile)
     if (ret != 0) {
         /* Prepare for initialization of the brick: construct its argument. */
         arg = api->makearg(path);
+    } else {
+        KFS_ERROR("Did not find path for POSIX brick in configuration.");
+    }
+
+    KFS_RETURN(arg);
+}
+
+/**
+ * Prepare an argument for the TCP backend. Returns NULL on error.
+ */
+static struct kfs_brick_arg *
+prepare_tcp_backend(const struct kfs_brick_api *api, const char *conffile)
+{
+    struct kfs_brick_arg *arg = NULL;
+    char hostname[256] = {'\0'};
+    char port[8] = {'\0'};
+    int ret1 = 0;
+    int ret2 = 0;
+
+    KFS_ENTER();
+
+    arg = NULL;
+    KFS_ASSERT(api != NULL && conffile != NULL);
+    ret1 = ini_gets("brick_root", "hostname", "", hostname, NUMELEM(hostname),
+            conffile);
+    ret2 = ini_gets("brick_root", "port", "", port, NUMELEM(port), conffile);
+    if (ret1 != 0 && ret2 != 0) {
+        /* Prepare for initialization of the brick: construct its argument. */
+        arg = api->makearg(hostname, port);
+    } else {
+        KFS_ERROR("Did not find hostname and port for TCP brick in "
+                  "configuration.");
     }
 
     KFS_RETURN(arg);
@@ -160,7 +192,7 @@ prepare_posix_backend(const struct kfs_brick_api *api, const char *conffile)
 
 const brick_preparer_t brick_preparers[] = {
     [BRICK_POSIX] = prepare_posix_backend,
-    [BRICK_TCP] = NULL,
+    [BRICK_TCP] = prepare_tcp_backend,
 };
 
 /**
@@ -207,10 +239,6 @@ get_root_brick(const char *conffile)
     }
     brick_api = brick_getapi_f();
     preparer = brick_preparers[brick];
-    if (preparer == NULL) {
-        KFS_ERROR("Brick %s not supported as root brick yet.", brickname);
-        KFS_RETURN(NULL);
-    }
     arg = preparer(brick_api, conffile);
     if (arg == NULL) {
         KFS_ERROR("Preparing brick failed.");

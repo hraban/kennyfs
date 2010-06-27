@@ -602,16 +602,11 @@ kenny_makearg(char *path)
              * happens later.
              */
             arg_generic = kfs_brick_makearg(serial_buf, serial_size);
+            if (arg_generic == NULL) {
+                serial_buf = KFS_FREE(serial_buf);
+            }
         }
         private_delarg(arg_specific);
-    }
-    if (arg_generic != NULL) {
-        /* Everything went right: construct the generic arg. */
-        arg_generic->payload_size = serial_size;
-        arg_generic->payload = serial_buf;
-        arg_generic->num_next_bricks = 0;
-        arg_generic->next_bricks = NULL;
-        arg_generic->next_args = NULL;
     }
 
     KFS_RETURN(arg_generic);

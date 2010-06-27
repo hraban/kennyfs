@@ -70,6 +70,8 @@ connect_to_server(void)
 {
     KFS_ENTER();
 
+    /* TODO: Open a connection to the server. */
+
     KFS_RETURN(-1);
 }
 
@@ -194,8 +196,8 @@ kenny_makearg(char *hostname, char *port)
     }
     /* Transform that into a generic arg (serialization). */
     serial_size = kfs_brick_tcp_arg2char(&serial_buf, arg_specific);
+    arg_specific = private_delarg(arg_specific);
     if (serial_buf == NULL) {
-        arg_specific = private_delarg(arg_specific);
         KFS_RETURN(NULL);
     }
     /*
@@ -203,16 +205,9 @@ kenny_makearg(char *hostname, char *port)
      */
     arg_generic = kfs_brick_makearg(serial_buf, serial_size);
     if (arg_generic == NULL) {
-        arg_specific = private_delarg(arg_specific);
         serial_buf = KFS_FREE(serial_buf);
         KFS_RETURN(NULL);
     }
-    /* Everything went right: construct the generic arg. */
-    arg_generic->payload_size = serial_size;
-    arg_generic->payload = serial_buf;
-    arg_generic->num_next_bricks = 0;
-    arg_generic->next_bricks = NULL;
-    arg_generic->next_args = NULL;
 
     KFS_RETURN(arg_generic);
 }
@@ -232,10 +227,11 @@ kenny_init(struct kfs_brick_arg *generic)
     myconf = kfs_brick_tcp_char2arg(generic->payload, generic->payload_size);
     if (myconf == NULL) {
         KFS_ERROR("Initializing TCP brick failed.");
-        ret = -1;
-    } else {
-        /* TODO: Open a connection to the server. */
-        ret = connect_to_server();
+        KFS_RETURN(-1);
+    }
+    ret = connect_to_server();
+    if (ret == -1) {
+        myconf = private_delarg(myconf);
     }
 
     KFS_RETURN(ret);

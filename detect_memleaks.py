@@ -61,9 +61,10 @@ def main():
         print 'Mallocs that were never freed:'
         print
         print 'Line number in debug output / last function entry before malloc.'
-        for memaddr, info in mallocs.iteritems():
+        for info in sorted(mallocs.itervalues()):
             print '%d\t%s' % info
         print 'Total memory leaks: %d' % len(mallocs)
+        sys.exit(1)
     else:
         print 'No memory leaks detected.'
 
