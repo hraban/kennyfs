@@ -77,7 +77,7 @@ sendrecv_sop(int sockfd)
     const size_t BUFSIZE = NUMELEM(SOP_STRING) - 1;
     size_t done = 0;
     ssize_t n = 0;
-    char buf[BUFSIZE + 1]; /* Cheat in an extra byte for debugging later on. */
+    char buf[BUFSIZE];
 
     KFS_ENTER();
 
@@ -88,7 +88,7 @@ sendrecv_sop(int sockfd)
     KFS_ASSERT(BUFSIZE > 0);
     done = 0;
     while (done < BUFSIZE) {
-        n = read(sockfd, buf, BUFSIZE - done);
+        n = read(sockfd, buf + done, BUFSIZE - done);
         switch (n) {
         case -1:
             KFS_ERROR("read: %s", strerror(errno));
@@ -105,8 +105,7 @@ sendrecv_sop(int sockfd)
     }
     KFS_ASSERT(done <= BUFSIZE);
     if (strncmp(SOP_STRING, buf, BUFSIZE) != 0) {
-        buf[BUFSIZE] = '\0';
-        KFS_ERROR("Received invalid start of protocol: '%s'.", buf);
+        KFS_ERROR("Received invalid start of protocol.");
         KFS_RETURN(-1);
     }
     /*
@@ -114,7 +113,7 @@ sendrecv_sop(int sockfd)
      */
     done = 0;
     while (done < BUFSIZE) {
-        n = write(sockfd, SOP_STRING, BUFSIZE - done);
+        n = write(sockfd, SOP_STRING + done, BUFSIZE - done);
         if (n == -1) {
             KFS_ERROR("write: %s", strerror(errno));
             KFS_RETURN(-1);
