@@ -222,7 +222,7 @@ process_readbuffer(client_t c)
 
 /**
  * Read data coming from this client, pending on the connection. Will execute a
- * blocking read(2) syscall, use select() to check for availability if wanted.
+ * blocking recv(2) syscall, use select() to check for availability if wanted.
  * Returns -1 on failure, 0 if data was succesfully read, 1 if there is no more
  * buffer space available for this client (not fatal, just wait for a while and
  * retry later, hoping the client is patient as well), 2 if an EOF was
@@ -244,10 +244,10 @@ read_pending(client_t c)
     if (len == 0) {
         KFS_RETURN(1);
     }
-    sysret = read(c->sockfd, tmp_buf, len);
+    sysret = recv(c->sockfd, tmp_buf, len, 0);
     switch (sysret) {
     case -1:
-        KFS_ERROR("read: %s", strerror(errno));
+        KFS_ERROR("recv: %s", strerror(errno));
         KFS_RETURN(-1);
         break;
     case 0:
@@ -294,12 +294,12 @@ write_pending(client_t c)
     if (len > c->writebuf_used) {
         buffer = c->writebuf_head;
     } else {
-        /* Write buffer wraps around end: copy to temp and write() once. */
+        /* Write buffer wraps around end: copy to temp and send(2) once. */
         memcpy(tmp_buf, c->writebuf_head, len);
         memcpy(tmp_buf + len, c->writebuf_start, c->writebuf_used - len);
         buffer = tmp_buf;
     }
-    sysret = write(c->sockfd, buffer, c->writebuf_used);
+    sysret = send(c->sockfd, buffer, c->writebuf_used, 0);
     if (sysret == -1) {
         KFS_ERROR("write: %s", strerror(errno));
         KFS_RETURN(-1);
@@ -388,7 +388,7 @@ close_socket(int sockfd)
     KFS_ENTER();
 
     KFS_ASSERT(sockfd >= 0);
-    /* TODO: shutdown(2) here, also? */
+    /* TODO: Use shutdown instead of close to avoid unistd.h dependency. */
 #if 0
     ret = shutdown(sockfd, SHUT_RDWR);
     if (ret == -1 && errno != ENOTCONN) {

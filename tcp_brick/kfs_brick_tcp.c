@@ -28,7 +28,6 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
-#include <unistd.h>
 #include <utime.h>
 
 #include "kfs.h"
@@ -86,24 +85,20 @@ sendrecv_sop(int sockfd)
      */
     KFS_ASSERT(BUFSIZE <= SSIZE_MAX);
     KFS_ASSERT(BUFSIZE > 0);
-    done = 0;
-    while (done < BUFSIZE) {
-        n = read(sockfd, buf + done, BUFSIZE - done);
-        switch (n) {
-        case -1:
-            KFS_ERROR("read: %s", strerror(errno));
-            KFS_RETURN(-1);
-            break;
-        case 0:
-            KFS_ERROR("Connection closed while reading start of protocol.");
-            KFS_RETURN(-1);
-            break;
-        default:
-            done += n;
-            break;
-        }
+    n = recv(sockfd, buf, BUFSIZE, MSG_WAITALL);
+    switch (n) {
+    case -1:
+        KFS_ERROR("read: %s", strerror(errno));
+        KFS_RETURN(-1);
+        break;
+    case 0:
+        KFS_ERROR("Connection closed while reading start of protocol.");
+        KFS_RETURN(-1);
+        break;
+    default:
+        break;
     }
-    KFS_ASSERT(done <= BUFSIZE);
+    KFS_ASSERT(n == BUFSIZE); /* If not, n should be -1. */
     if (strncmp(SOP_STRING, buf, BUFSIZE) != 0) {
         KFS_ERROR("Received invalid start of protocol.");
         KFS_RETURN(-1);
@@ -113,7 +108,7 @@ sendrecv_sop(int sockfd)
      */
     done = 0;
     while (done < BUFSIZE) {
-        n = write(sockfd, SOP_STRING + done, BUFSIZE - done);
+        n = send(sockfd, SOP_STRING + done, BUFSIZE - done, 0);
         if (n == -1) {
             KFS_ERROR("write: %s", strerror(errno));
             KFS_RETURN(-1);
@@ -164,12 +159,21 @@ connect_to_server(const struct kfs_brick_tcp_arg *conf)
         /* Found a good socket. */
         break;
     }
+    /* TODO: Does freeaddrinfo(NULL) fail? If not, this check is spurious. */
+    if (servinfo != NULL) {
+        freeaddrinfo(servinfo);
+    }
     if (p == NULL) {
         KFS_ERROR("Could not connect to %s:%s.", conf->hostname, conf->port);
         KFS_RETURN(-1);
     }
-    freeaddrinfo(servinfo);
     ret = sendrecv_sop(sockfd);
+    if (ret == -1) {
+        ret = shutdown(sockfd, SHUT_RDWR);
+        if (ret == -1 && errno != ENOTCONN) {
+            KFS_ERROR("shutdown: %s", strerror(errno));
+        }
+    }
 
     KFS_RETURN(ret);
 }
