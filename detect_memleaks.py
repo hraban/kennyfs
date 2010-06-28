@@ -6,9 +6,10 @@ RE_MALLOC = re.compile(r'kfs_malloc.*0x(\w+)')
 RE_FREE = re.compile(r'kfs_free.*0x(\w+)')
 USAGE = '''Usage:
 
-    %(name)s [DEBUG_FILE]
+    %(name)s [-d] [DEBUG_FILE]
 
 If the debug file is omitted or set to '-', stdin is read instead of a file.
+Option -d enables debug mode.
 
 Example:
 
@@ -21,6 +22,10 @@ Example:
 def main():
     stack = []
     mallocs = {}
+    debug = False
+    if '-d' in sys.argv:
+        sys.argv.remove('-d')
+        debug = True
     if '-h' in sys.argv or '--help' in sys.argv or len(sys.argv) > 2:
         print __doc__
         print
@@ -37,6 +42,8 @@ def main():
     for linenum, line in enumerate(f):
         line = line.strip()
         linenum += 1
+        if debug:
+            print '%d: %s' % (linenum, line)
         if line.startswith('[kfs_trace]'):
             stripped = line[len('[kfs_trace] '):]
             if stripped.endswith('enter'):
@@ -48,7 +55,11 @@ def main():
             m = RE_MALLOC.search(line)
             if m is not None:
                 memaddr = int(m.group(1), 16)
-                func = stack[-1]
+                try:
+                    func = stack[-1]
+                except IndexError:
+                    sys.exit('Malloc outside function at line %d, corrupt '
+                             'stack or trace output not enabled.' % linenum)
                 assert(memaddr not in mallocs)
                 mallocs[memaddr] = (linenum, func)
                 continue
