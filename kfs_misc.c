@@ -2,6 +2,9 @@
  * Some utility functions.
  */
 
+/* For sleep(). */
+#include <unistd.h>
+
 #include "kfs_misc.h"
 
 #include "kfs.h"
@@ -23,6 +26,15 @@ inline int
 xor(int x, int y)
 {
     return !x ^ !y;
+}
+
+/**
+ * Sleep for the given number of seconds.
+ */
+inline unsigned int
+kfs_sleep(unsigned int seconds)
+{
+    return sleep(seconds);
 }
 
 /**

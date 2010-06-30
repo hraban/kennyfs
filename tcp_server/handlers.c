@@ -7,9 +7,9 @@
  * big.
  */
 
-#include "tcp_server/handlers.h"
-
 #define FUSE_USE_VERSION 26
+
+#include "tcp_server/handlers.h"
 
 #include <fuse.h>
 #include <fuse_opt.h>

@@ -24,6 +24,13 @@
 #  endif
 #endif
 
+/**
+ * Many functions use this macro in allocating a buffer on the stack to build a
+ * full pathname. When it is exceeded more memory is automatically allocated on
+ * the heap. Happens with kfs_bufstrcat().
+ */
+#define PATHBUF_SIZE 256
+
 typedef unsigned int uint_t;
 
 #endif

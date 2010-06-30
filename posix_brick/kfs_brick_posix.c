@@ -34,12 +34,6 @@
 #include "kfs_api.h"
 #include "kfs_misc.h"
 
-/* Many functions use this macro in allocating a buffer on the stack to build a
- * full pathname. When it is exceeded more memory is automatically allocated on
- * the heap. Happens with kfs_bufstrcat().
- */
-#define PATHBUF_SIZE 256
-
 /*
  * Types.
  */
@@ -239,7 +233,7 @@ kenny_setxattr(const char *fusepath, const char *name, const char *value, size_t
     } else {
         ret = lsetxattr(fullpath, name, value, size, flags);
         if (ret == -1) {
-            KFS_ERROR("setxattr: %s", strerror(errno));
+            KFS_ERROR("lsetxattr: %s", strerror(errno));
             ret = -errno;
         }
         if (fullpath != pathbuf) {
@@ -266,7 +260,7 @@ kenny_getxattr(const char *fusepath, const char *name, char *value, size_t size)
     } else {
         ret = lgetxattr(fullpath, name, value, size);
         if (ret == -1) {
-            KFS_ERROR("getxattr: %s", strerror(errno));
+            KFS_ERROR("lgetxattr: %s", strerror(errno));
             ret = -errno;
         }
         if (fullpath != pathbuf) {
@@ -293,7 +287,7 @@ kenny_listxattr(const char *fusepath, char *list, size_t size)
     } else {
         ret = llistxattr(fullpath, list, size);
         if (ret == -1) {
-            KFS_ERROR("listxattr: %s", strerror(errno));
+            KFS_ERROR("llistxattr: %s", strerror(errno));
             ret = -errno;
         }
         if (fullpath != pathbuf) {
@@ -320,7 +314,7 @@ kenny_removexattr(const char *fusepath, const char *name)
     } else {
         ret = lremovexattr(fullpath, name);
         if (ret == -1) {
-            KFS_ERROR("removexattr: %s", strerror(errno));
+            KFS_ERROR("lremovexattr: %s", strerror(errno));
             ret = -errno;
         }
         if (fullpath != pathbuf) {
@@ -468,7 +462,7 @@ kenny_utimens(const char *fusepath, const struct timespec tvnano[2])
         tvmicro[1].tv_usec = tvnano[1].tv_nsec / 1000;
         ret = utimes(fullpath, tvmicro);
         if (ret == -1) {
-            KFS_ERROR("removexattr: %s", strerror(errno));
+            KFS_ERROR("utimes: %s", strerror(errno));
             ret = -errno;
         }
         if (fullpath != pathbuf) {

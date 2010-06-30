@@ -3,180 +3,23 @@
  */
 
 #define FUSE_USE_VERSION 26
-/* Macro is necessary to get fstatat(). */
-#define _ATFILE_SOURCE
-/* Macro is necessary to get pread(). */
-#define _XOPEN_SOURCE 500
-/* Macro is necessary to get dirfd(). */
-#define _BSD_SOURCE
 
-/* <attr/xattr.h> needs this header. */
-#include <sys/types.h>
+#include "tcp_brick/kfs_brick_tcp.h"
 
-#include <arpa/inet.h>
-#include <attr/xattr.h>
-#include <dirent.h>
-#include <errno.h>
-#include <fcntl.h>
 #include <fuse.h>
-#include <limits.h>
-#include <netdb.h>
-#include <stddef.h>
-#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <utime.h>
 
 #include "kfs.h"
 #include "kfs_api.h"
 #include "kfs_misc.h"
+#include "tcp_brick/connection.h"
+#include "tcp_brick/handlers.h"
 #include "tcp_brick/tcp_brick.h"
-
-/* Many functions use this macro in allocating a buffer on the stack to build a
- * full pathname. When it is exceeded more memory is automatically allocated on
- * the heap. Happens with kfs_bufstrcat().
- */
-#define PATHBUF_SIZE 256
-
-/*
- * Types.
- */
-
-struct kenny_fh {
-    DIR *dir;
-    int fd;
-};
-
-struct kfs_brick_tcp_arg {
-    char port[7];
-    char *hostname;
-};
-
-
-/*
- * Globals and statics.
- */
 
 static struct kfs_brick_tcp_arg *myconf;
 
 static const struct fuse_operations kenny_oper = {
 };
-
-/**
- * Send the start-of-protocol over given socket and check if it comes in as
- * well. Returns -1 on failure, 0 on success. Never closes the socket.
- */
-static int
-sendrecv_sop(int sockfd)
-{
-    /* Trailing '\0'-byte unnecessary. */
-    const size_t BUFSIZE = NUMELEM(SOP_STRING) - 1;
-    size_t done = 0;
-    ssize_t n = 0;
-    char buf[BUFSIZE];
-
-    KFS_ENTER();
-
-    /*
-     * Receive SOP first.
-     */
-    KFS_ASSERT(BUFSIZE <= SSIZE_MAX);
-    KFS_ASSERT(BUFSIZE > 0);
-    n = recv(sockfd, buf, BUFSIZE, MSG_WAITALL);
-    switch (n) {
-    case -1:
-        KFS_ERROR("read: %s", strerror(errno));
-        KFS_RETURN(-1);
-        break;
-    case 0:
-        KFS_ERROR("Connection closed while reading start of protocol.");
-        KFS_RETURN(-1);
-        break;
-    default:
-        break;
-    }
-    KFS_ASSERT(n == BUFSIZE); /* If not, n should be -1. */
-    if (strncmp(SOP_STRING, buf, BUFSIZE) != 0) {
-        KFS_ERROR("Received invalid start of protocol.");
-        KFS_RETURN(-1);
-    }
-    /*
-     * Send the SOP.
-     */
-    done = 0;
-    while (done < BUFSIZE) {
-        n = send(sockfd, SOP_STRING + done, BUFSIZE - done, 0);
-        if (n == -1) {
-            KFS_ERROR("write: %s", strerror(errno));
-            KFS_RETURN(-1);
-        }
-        done += n;
-    }
-
-    KFS_RETURN(0);
-}
-
-/**
- * Connect to the server specified in the configuration. The argument is the
- * same pointer as the global variable myconf but explicitly passing it improves
- * readability.
- */
-static int
-connect_to_server(const struct kfs_brick_tcp_arg *conf)
-{
-    struct addrinfo hints;
-    struct addrinfo *servinfo = NULL;
-    struct addrinfo *p = NULL;
-    int sockfd = 0;
-    int ret = 0;
-
-    KFS_ENTER();
-
-    KFS_ASSERT(conf == myconf);
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    ret = getaddrinfo(conf->hostname, conf->port, &hints, &servinfo);
-    if (ret != 0) {
-        KFS_ERROR("getaddrinfo: %s", gai_strerror(ret));
-        KFS_RETURN(-1);
-    }
-    /* Try to get connected to the host by going through all possibilities. */
-    for (p = servinfo; p != NULL; p = p->ai_next) {
-        sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-        if (sockfd == -1) {
-            KFS_INFO("socket: %s", strerror(errno));
-            continue;
-        }
-        ret = connect(sockfd, p->ai_addr, p->ai_addrlen);
-        if (ret == -1) {
-            KFS_INFO("connect: %s", strerror(errno));
-            continue;
-        }
-        /* Found a good socket. */
-        break;
-    }
-    /* TODO: Does freeaddrinfo(NULL) fail? If not, this check is spurious. */
-    if (servinfo != NULL) {
-        freeaddrinfo(servinfo);
-    }
-    if (p == NULL) {
-        KFS_ERROR("Could not connect to %s:%s.", conf->hostname, conf->port);
-        KFS_RETURN(-1);
-    }
-    ret = sendrecv_sop(sockfd);
-    if (ret == -1) {
-        ret = shutdown(sockfd, SHUT_RDWR);
-        if (ret == -1 && errno != ENOTCONN) {
-            KFS_ERROR("shutdown: %s", strerror(errno));
-        }
-    }
-
-    KFS_RETURN(ret);
-}
 
 /**
  * Create a new arg struct, specific for the TCP brick.
@@ -190,11 +33,6 @@ private_makearg(char *hostname, char *port)
     KFS_ENTER();
 
     KFS_ASSERT(hostname != NULL && port != NULL);
-    /*
-     * TODO: this may be compiled out, which leaves a buffer overflow
-     * vulnerability.
-     */
-    KFS_ASSERT(strlen(port) < 7);
     arg = KFS_MALLOC(sizeof(*arg));
     if (arg != NULL) {
         strcpy(arg->port, port);
@@ -332,10 +170,7 @@ kenny_init(struct kfs_brick_arg *generic)
         KFS_ERROR("Initializing TCP brick failed.");
         KFS_RETURN(-1);
     }
-    ret = connect_to_server(myconf);
-    if (ret == -1) {
-        myconf = private_delarg(myconf);
-    }
+    ret = init_connection(myconf);
 
     KFS_RETURN(ret);
 }
