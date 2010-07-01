@@ -18,9 +18,6 @@
 
 static struct kfs_brick_tcp_arg *myconf;
 
-static const struct fuse_operations kenny_oper = {
-};
-
 /**
  * Create a new arg struct, specific for the TCP brick.
  * TODO: could use a better name.
@@ -175,17 +172,6 @@ kenny_init(struct kfs_brick_arg *generic)
     KFS_RETURN(ret);
 }
 
-/*
- * Get the backend interface.
- */
-static const struct fuse_operations *
-kenny_getfuncs(void)
-{
-    KFS_ENTER();
-
-    KFS_RETURN(&kenny_oper);
-}
-
 /**
  * Global cleanup.
  */
@@ -202,7 +188,7 @@ kenny_halt(void)
 static const struct kfs_brick_api kenny_api = {
     .makearg = kenny_makearg,
     .init = kenny_init,
-    .getfuncs = kenny_getfuncs,
+    .getfuncs = get_handlers,
     .halt = kenny_halt,
 };
 

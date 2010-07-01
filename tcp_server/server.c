@@ -1,21 +1,6 @@
 /**
  * KennyFS network server. Listens for TCP connections and serves kennyfs
- * network clients. Note that there is NO authentication and NO encryption, so
- * please only start this in a trusted environment. All network operations are
- * non-blocking but all operations are blocking (i.e.: one slow client will not
- * clog the server but one client requesting something from a slow drive will).
- *
- * The protocol is as follows:
- *
- * - Both send the same SOP (start of protocol) string to verify protocol
- *   conformance.
- * - Client sends an operation, server processes it and replies with the result.
- *
- * An operation is built up like this:
- *
- * - Size of the serialised operation as a uint32_t (4 bytes).
- * - ID of the operation as a uint16_t (2 bytes).
- * - Serialized operation (size - 2 bytes).
+ * network clients.
  */
 
 #include "tcp_server/server.h"
@@ -40,7 +25,7 @@
 #include "tcp_server/handlers.h"
 
 /** The size of per-client read and write buffers. */
-#define BUF_LEN 10
+#define BUF_LEN 100
 
 /**
  * Configuration variables.
@@ -121,32 +106,24 @@ read_readbuffer(client_t c, size_t n)
 static int
 process_operation(client_t c, const char *rawop, size_t opsize)
 {
-    uint16_t net_i = 0;
-    uint_t opid = 0;
-    ssize_t size = 0;
+    uint16_t opid = 0;
     int ret = 0;
     handler_t handler = NULL;
 
     KFS_ENTER();
 
-    size = sizeof(uint16_t);
-    KFS_ASSERT(size == 2);
-    if (opsize < size) {
-        KFS_RETURN(-1);
-    }
-    memcpy(&net_i, rawop, size);
-    opid = ntohs(net_i);
+    KFS_ASSERT(rawop != NULL);
+    memcpy(&opid, rawop, 2);
+    opid = ntohs(opid);
     if (opid >= KFS_OPID_MAX_) {
         KFS_RETURN(-1);
     }
-    KFS_DEBUG("Processing operation %u.", opid);
+    KFS_DEBUG("Processing operation %hu.", opid);
     /* TODO: Process. */
-    rawop += size;
-    opsize -= size;
     handler = handlers[opid];
     ret = 0;
     if (handler != NULL) {
-        ret = handler(c, rawop, opsize);
+        ret = handler(c, rawop + 2, opsize);
     }
 
     KFS_RETURN(ret);
@@ -178,7 +155,7 @@ process_readbuffer(client_t c)
         if (ret != 0) {
             /* Did not get proper start of protocol message from client. */
             /* TODO: Send back proper error message. */
-            KFS_DEBUG("Received erroneous SOP from client.");
+            KFS_INFO("Received erroneous SOP from client.");
             KFS_RETURN(-1);
         }
         KFS_DEBUG("Received proper SOP from client.");
@@ -186,15 +163,14 @@ process_readbuffer(client_t c)
     }
     if (c->opsize == 0) {
         /* No operation pending: get the size of the next one (four bytes). */
-        KFS_ASSERT(sizeof(uint32_t) == 4);
-        raw = read_readbuffer(c, sizeof(uint32_t));
+        raw = read_readbuffer(c, 4);
         if (raw == NULL) {
             KFS_RETURN(0);
         }
-        memcpy(&net_i, raw, sizeof(uint32_t));
+        memcpy(&net_i, raw, 4);
         KFS_FREE(raw);
         opsize = ntohl(net_i);
-        if (opsize > BUF_LEN) {
+        if (opsize > BUF_LEN - 2) {
             /* TODO: Send back error instead of disconnecting. */
             KFS_ERROR("Incoming operation too big: %lu bytes?",
                     (unsigned long) opsize);
@@ -203,7 +179,7 @@ process_readbuffer(client_t c)
         c->opsize = opsize;
     } else {
         /* Operation pending: see if it is now received in full. */
-        raw = read_readbuffer(c, c->opsize);
+        raw = read_readbuffer(c, c->opsize + 2);
         if (raw == NULL) {
             KFS_RETURN(0);
         }
@@ -315,68 +291,6 @@ write_pending(client_t c)
 }
 
 /**
- * Send raw message (array of chars) to given client. Returns -1 if the buffer
- * is full, 0 on success. Puts the message in a buffer, actual sending happens
- * when the connection with the client is ready for it (and errors there are not
- * detected by this function).
- */
-static int
-send_msg(client_t c, const char *msg, size_t msglen)
-{
-    size_t len = 0;
-    char *p = NULL;
-
-    KFS_ENTER();
-
-    KFS_ASSERT(msg != NULL);
-    verify_client(c);
-    if (msglen == 0) {
-        KFS_RETURN(0);
-    }
-    /* Free space in buffer, total. */
-    len = BUF_LEN - c->writebuf_used;
-    if (msglen > len) {
-        KFS_RETURN(-1);
-    }
-    /* Last used address + 1. */
-    p = c->writebuf_head + c->writebuf_used;
-    /* Length of free contiguous block. */
-    len = c->writebuf_end - p;
-    if (msglen <= len) {
-        /* Contiguous free space fits message size. */
-        memcpy(p, msg, msglen);
-    } else {
-        /* Split message up to fill contiguous space and continue at start. */
-        memcpy(p, msg, len);
-        memcpy(c->writebuf_start, msg + len, msglen - len);
-    }
-    c->writebuf_used += msglen;
-    verify_client(c);
-
-    KFS_RETURN(0);
-}
-
-/**
- * Send string (null-terminated array of chars). Does not include the appending
- * null byte.
- */
-static int
-send_string(client_t client, const char *string)
-{
-    int ret = 0;
-
-    KFS_ENTER();
-
-    KFS_ASSERT(string != NULL);
-    ret = send_msg(client, string, strlen(string));
-    if (ret == -1) {
-        KFS_DEBUG("Not enough buffer space to hold message '%s'.", string);
-    }
-
-    KFS_RETURN(ret);
-}
-
-/**
  * Close a socket, print a message on error. Returns -1 on failure, 0 on
  * success.
  */
@@ -478,7 +392,7 @@ connect_client(int sockfd)
     clients = c;
     c->prev = NULL;
     /* First characters sent are the start of protocol string. */
-    ret = send_string(c, SOP_STRING);
+    ret = send_msg(c, SOP_STRING, strlen(SOP_STRING));
     if (ret == -1) {
         /* Disconnection could also fail, but return value is already -1. */
         disconnect_client(c);
@@ -675,6 +589,49 @@ prepare_posix_backend(const struct kfs_brick_api *api, char *path)
     KFS_RETURN(ret);
 }
 
+/**
+ * Send raw message (array of chars) to given client. Returns -1 if the buffer
+ * is full, 0 on success. Puts the message in a buffer, actual sending happens
+ * when the connection with the client is ready for it (and errors there are not
+ * detected by this function).
+ */
+int
+send_msg(client_t c, const char *msg, size_t msglen)
+{
+    size_t len = 0;
+    char *p = NULL;
+
+    KFS_ENTER();
+
+    KFS_ASSERT(msg != NULL);
+    verify_client(c);
+    if (msglen == 0) {
+        KFS_RETURN(0);
+    }
+    /* Free space in buffer, total. */
+    len = BUF_LEN - c->writebuf_used;
+    if (msglen > len) {
+        KFS_ERROR("Not enough space in buffer to send message.");
+        KFS_RETURN(-1);
+    }
+    /* Last used address + 1. */
+    p = c->writebuf_head + c->writebuf_used;
+    /* Length of free contiguous block. */
+    len = c->writebuf_end - p;
+    if (msglen <= len) {
+        /* Contiguous free space fits message size. */
+        memcpy(p, msg, msglen);
+    } else {
+        /* Split message up to fill contiguous space and continue at start. */
+        memcpy(p, msg, len);
+        memcpy(c->writebuf_start, msg + len, msglen - len);
+    }
+    c->writebuf_used += msglen;
+    verify_client(c);
+
+    KFS_RETURN(0);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -688,6 +645,7 @@ main(int argc, char *argv[])
 
     KFS_ENTER();
 
+    KFS_ASSERT(sizeof(uint16_t) == 2 && sizeof(uint32_t) == 4);
     ret = 0;
     KFS_INFO("Starting KennyFS version %s.", KFS_VERSION);
     handlers = get_handlers();

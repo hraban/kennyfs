@@ -1,6 +1,40 @@
 #ifndef KFS_NETWORK_H
 #define KFS_NETWORK_H
 
+/*
+ * The KennyFS TCP brick and -server share this header.
+ *
+ * The communication protocol can be described as follows:
+ *
+ * - When a client connects to a server, both send the same SOP (start of
+ *   protocol) string to verify protocol conformance. The server behaves
+ *   asynchronously during this step, meaning it can either receive the string
+ *   first or send it out first, depending on the client.
+ * - From here on, synchronous messaging starts with the client sending an
+ *   operation and the server replying with an answer.
+ *
+ * An operation (client to server) is built up like this:
+ *
+ * - Size of the serialised operation as a uint32_t (4 bytes).
+ * - ID of the operation as a uint16_t (2 bytes).
+ * - Serialised operation (n bytes).
+ *
+ * A reply (server to client) is built up like this:
+ *
+ * - Return value as a uint32_t (4 bytes).
+ * - On success: the body of the reply.
+ * 
+ * The return value is whatever is returned by the backend brick, which is
+ * defined as "negated errno" in FUSE, although here we use the absolute
+ * (because of the unsigned int).
+ *
+ * Note that there is NO authentication and NO encryption, so please only start
+ * this in a trusted environment. All network operations are non-blocking but
+ * all operations are blocking (i.e.: one slow client will not clog the server
+ * but one client requesting something from a slow drive will).
+ */
+
+
 /** The start of the protocol: sent whenever a new client connects. */
 #define SOP_STRING "poep\n"
 

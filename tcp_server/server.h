@@ -44,4 +44,6 @@ struct client_node {
 
 typedef struct client_node *client_t;
 
+int send_msg(client_t c, const char *msg, size_t msglen);
+
 #endif

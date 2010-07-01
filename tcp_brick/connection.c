@@ -149,8 +149,8 @@ kfs_recv(int sockfd, char *buf, size_t buflen)
  * critical failure and +1 on recoverable failure.
  */
 static int
-kfs_sendrecv(int sockfd, char *recvbuf, size_t recvbufsize,
-             const char *sendbuf, size_t sendbufsize)
+kfs_sendrecv(int sockfd, const char *sendbuf, size_t sendbufsize,
+             char *recvbuf, size_t recvbufsize)
 {
     int ret = 0;
 
@@ -180,7 +180,7 @@ sendrecv_sop(int sockfd)
 
     KFS_ENTER();
 
-    ret = kfs_sendrecv(sockfd, buf, BUFSIZE, SOP_STRING, BUFSIZE);
+    ret = kfs_sendrecv(sockfd, SOP_STRING, BUFSIZE, buf, BUFSIZE);
     if (ret == 0 && strncmp(SOP_STRING, buf, BUFSIZE) != 0) {
         KFS_ERROR("Received invalid start of protocol.");
         KFS_RETURN(-1);
@@ -287,13 +287,19 @@ refresh_socket(int sockfd, unsigned int *retries,
 }
 
 /**
- * Send given operation to the server and wait for its reply. Returns 0 on
- * succes, -1 on unrecoverable failure.
+ * Send given operation to the server and wait for its reply. Returns -1 on
+ * unrecoverable failure, otherwise returns whatever came in through the network
+ * as the return value (sent by the server). Note that if a non-zero return
+ * value comes in from the server (i.e.: failure of its backend), the result
+ * buffer is ignored and that value is returned immediately. On success,
+ * however, this function blocks until the entire result is in.
  */
 int
-do_operation(char *resbuf, size_t resbufsize,
-             const char *operbuf, size_t operbufsize)
+do_operation(const char *operbuf, size_t operbufsize,
+             char *resbuf, size_t resbufsize)
 {
+    char retvalbuf[4];
+    uint32_t retval = 0;
     int sockfd = 0;
     int ret = 0;
     unsigned int retries = MAX_RETRIES;
@@ -302,16 +308,38 @@ do_operation(char *resbuf, size_t resbufsize,
 
     KFS_ASSERT(resbuf != NULL && operbuf != NULL);
     sockfd = cached_sockfd;
-    retries = 0;
+    retries = MAX_RETRIES;
     for (;;) {
-        ret = kfs_sendrecv(sockfd, resbuf, resbufsize, operbuf, operbufsize);
-        if (ret != 1) {
-            /* Quit if an unrecoverable error occurs and on success. */
+        ret = kfs_sendrecv(sockfd, operbuf, operbufsize, retvalbuf, 4);
+        if (ret == 0) {
+            /* Network operation was a success. */
+            memcpy(&retval, retvalbuf, 4);
+            retval = ntohl(retval);
+            if (retval != 0) {
+                /* The backend of the server failed: return its error code. */
+                KFS_RETURN(retval);
+            }
+            /* Backend operation was also a success: retrieve the body. */
+            ret = kfs_recv(sockfd, resbuf, resbufsize);
+            if (ret == 0) {
+                /* Everything succeeded. */
+                break;
+            }
+            /**
+             * If retrieving the result body failed, treat the error value
+             * as if it came from the kfs_sendrecv() call.
+             */
+        }
+        if (ret == -1) {
+            /* An unrecoverable error. */
             break;
         }
+        KFS_ASSERT(ret == 1);
         /*
-         * Recursion would be much more elegant but if connection never succeeds
-         * it will eat the stack and eventually cause a segfault.
+         * A recoverable error occurred: reconnect and retry the whole
+         * operation. Recursion would be much more elegant but if connection
+         * never succeeds it will eat the stack and eventually cause a
+         * segfault.
          */
         do {
             if (retries == 0) {
@@ -327,6 +355,8 @@ do_operation(char *resbuf, size_t resbufsize,
                 KFS_RETURN(-1);
             }
         } while (ret == 1);
+        /* Retry from the start. */
+        continue;
     }
     cached_sockfd = sockfd;
 
@@ -339,22 +369,35 @@ do_operation(char *resbuf, size_t resbufsize,
 int
 init_connection(const struct kfs_brick_tcp_arg *conf)
 {
-    unsigned int i = 0;
+    unsigned int retries = 0;
+    int sopret = 0;
 
     KFS_ENTER();
 
+    retries = MAX_RETRIES;
     myconf = *conf;
     cached_sockfd = connect_to_server(conf);
-    for (i = MAX_RETRIES; cached_sockfd == -2 && i > 0; i--) {
-        cached_sockfd = refresh_socket(-1, &i, conf);
-    }
-    switch (cached_sockfd) {
-    case -2:
-    case -1:
+    do {
+        while (cached_sockfd == -2 && retries > 0) {
+            cached_sockfd = refresh_socket(-1, &retries, conf);
+            retries -= 1;
+        }
+        if (cached_sockfd == -1 || cached_sockfd == -2) {
+            KFS_RETURN(-1);
+        }
+        sopret = sendrecv_sop(cached_sockfd);
+        if (sopret != 1) {
+            /* On success or critical failure, stop retrying. */
+            KFS_ASSERT(sopret == -1 || sopret == 0);
+            break;
+        }
+        cached_sockfd = refresh_socket(cached_sockfd, &retries, conf);
+        retries -= 1;
+    } while (retries > 0);
+    if (sopret != 0 || cached_sockfd == -1) {
         KFS_RETURN(-1);
-        break;
-    default:
-        KFS_RETURN(0);
-        break;
     }
+    KFS_ASSERT(cached_sockfd >= 0);
+
+    KFS_RETURN(0);
 }
