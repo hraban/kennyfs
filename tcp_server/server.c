@@ -335,11 +335,13 @@ disconnect_client(client_t c)
     /* Remove from the list of connected clients. */
     if (c->prev != NULL) {
         c->prev->next = c->next;
+        c->prev = NULL;
     } else {
         clients = c->next;
     }
     if (c->next != NULL) {
         c->next->prev = c->prev;
+        c->next = NULL;
     }
     c->readbuf_start = KFS_FREE(c->readbuf_start);
     c->writebuf_start = KFS_FREE(c->writebuf_start);
@@ -383,6 +385,7 @@ connect_client(int sockfd)
     c->writebuf_head = c->writebuf_start;
     c->writebuf_used = 0;
     c->opsize = 0;
+    c->got_sop = 0;
     c->sockfd = sockfd;
     /* Add the c to the global list of connected clients. */
     if (clients != NULL) {
@@ -476,11 +479,12 @@ run_daemon(char *port)
     fd_set readset;
     fd_set writeset;
     client_t client = NULL;
+    client_t client2 = NULL;
     struct sockaddr_in client_address;
     size_t addrsize = 0;
     /* Socket listening for incoming connections. */
     int listen_sock = 0;
-    int newsock = 0;
+    int sockfd = 0;
     int nfds = 0;
     int ret = 0;
 
@@ -517,22 +521,23 @@ run_daemon(char *port)
             /* New incoming connection on listening socket. */
             addrsize = sizeof(client_address);
             memset(&client_address, 0, addrsize);
-            newsock = accept(listen_sock,
+            sockfd = accept(listen_sock,
                     (struct sockaddr *) &client_address, &addrsize);
-            if (newsock == -1) {
+            if (sockfd == -1) {
                 KFS_ERROR("accept: %s", strerror(errno));
                 KFS_WARNING("Could not accept new connection.");
             } else {
-                ret = connect_client(newsock);
+                ret = connect_client(sockfd);
                 if (ret == 0) {
                     KFS_INFO("Succesfully accepted connection.");
-                    FD_SET(newsock, &allsocks);
-                    nfds = max(newsock, nfds);
+                    FD_SET(sockfd, &allsocks);
+                    nfds = max(sockfd, nfds);
                 }
             }
         }
         /* Check all possible sockets to see if there is pending data. */
-        for (client = clients; client != NULL; client = client->next) {
+        client = clients;
+        while (client != NULL) {
             ret = 0;
             if (FD_ISSET(client->sockfd, &readset)) {
                 /* Pending data on existing connection. */
@@ -547,11 +552,22 @@ run_daemon(char *port)
                 /* Writing is possible. */
                 ret = write_pending(client);
             }
+            client2 = client->next;
             if (ret == -1) {
-                FD_CLR(client->sockfd, &allsocks);
+                sockfd = client->sockfd;
+                FD_CLR(sockfd, &allsocks);
                 /* Error may occur while disconnecting client: ignore. */
                 disconnect_client(client);
+                if (sockfd != nfds) {
+                    nfds = listen_sock;
+                    /* This client had the highest socket number: update it. */
+                    for (client = clients; client != NULL; client =
+                            client->next) {
+                        nfds = max(client->sockfd, nfds);
+                    }
+                }
             }
+            client = client2;
         }
     }
 
