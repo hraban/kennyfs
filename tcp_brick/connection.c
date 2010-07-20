@@ -117,26 +117,24 @@ kfs_recv(int sockfd, char *buf, size_t buflen)
     } else if (buflen == 0) {
         KFS_RETURN(0);
     }
-    for (;;) {
-        n = recv(sockfd, buf, buflen, MSG_WAITALL);
-        switch (n) {
-        case -1:
-            if (recoverable_error(errno)) {
-                KFS_RETURN(1);
-            } else {
-                KFS_ERROR("recv: %s", strerror(errno));
-                KFS_RETURN(-1);
-            }
-            break;
-        case 0:
-            KFS_DEBUG("Disconnected from server while receiving data.");
+    n = recv(sockfd, buf, buflen, MSG_WAITALL);
+    switch (n) {
+    case -1:
+        if (recoverable_error(errno)) {
             KFS_RETURN(1);
-            break;
-        default:
-            KFS_ASSERT(n == buflen);
-            KFS_RETURN(0);
-            break;
+        } else {
+            KFS_ERROR("recv: %s", strerror(errno));
+            KFS_RETURN(-1);
         }
+        break;
+    case 0:
+        KFS_DEBUG("Disconnected from server while receiving data.");
+        KFS_RETURN(1);
+        break;
+    default:
+        KFS_ASSERT(n == buflen);
+        KFS_RETURN(0);
+        break;
     }
 
     /* Control never reaches this point. */
@@ -298,8 +296,9 @@ int
 do_operation(const char *operbuf, size_t operbufsize,
              char *resbuf, size_t resbufsize)
 {
-    char retvalbuf[4];
+    char retvalbuf[8];
     uint32_t retval = 0;
+    uint32_t result_size = 0;
     int sockfd = 0;
     int ret = 0;
     unsigned int retries = MAX_RETRIES;
@@ -307,10 +306,9 @@ do_operation(const char *operbuf, size_t operbufsize,
     KFS_ENTER();
 
     KFS_ASSERT(resbuf != NULL && operbuf != NULL);
-    sockfd = cached_sockfd;
     retries = MAX_RETRIES;
     for (;;) {
-        ret = kfs_sendrecv(sockfd, operbuf, operbufsize, retvalbuf, 4);
+        ret = kfs_sendrecv(cached_sockfd, operbuf, operbufsize, retvalbuf, 8);
         if (ret == 0) {
             /* Network operation was a success. */
             memcpy(&retval, retvalbuf, 4);
@@ -319,11 +317,18 @@ do_operation(const char *operbuf, size_t operbufsize,
                 /* The backend of the server failed: return its error code. */
                 KFS_RETURN(retval);
             }
+            memcpy(&result_size, retvalbuf + 4, 4);
+            result_size = ntohl(result_size);
+            if (result_size > resbufsize) {
+                /* Result is too big for given buffer. */
+                KFS_ERROR("Reply from server is too large for buffer.");
+                KFS_RETURN(-1);
+            }
             /* Backend operation was also a success: retrieve the body. */
-            ret = kfs_recv(sockfd, resbuf, resbufsize);
+            ret = kfs_recv(cached_sockfd, resbuf, result_size);
             if (ret == 0) {
                 /* Everything succeeded. */
-                break;
+                KFS_RETURN(0);
             }
             /**
              * If retrieving the result body failed, treat the error value
@@ -332,7 +337,7 @@ do_operation(const char *operbuf, size_t operbufsize,
         }
         if (ret == -1) {
             /* An unrecoverable error. */
-            break;
+            KFS_RETURN(-1);
         }
         KFS_ASSERT(ret == 1);
         /*
@@ -346,11 +351,12 @@ do_operation(const char *operbuf, size_t operbufsize,
                 KFS_RETURN(-1);
             }
             retries -= 1;
-            sockfd = refresh_socket(sockfd, &retries, &myconf);
+            sockfd = refresh_socket(cached_sockfd, &retries, &myconf);
             if (sockfd == -1) {
                 KFS_RETURN(-1);
             }
-            ret = sendrecv_sop(sockfd);
+            cached_sockfd = sockfd;
+            ret = sendrecv_sop(cached_sockfd);
             if (ret == -1) {
                 KFS_RETURN(-1);
             }
@@ -358,7 +364,6 @@ do_operation(const char *operbuf, size_t operbufsize,
         /* Retry from the start. */
         continue;
     }
-    cached_sockfd = sockfd;
 
     KFS_RETURN(ret);
 }

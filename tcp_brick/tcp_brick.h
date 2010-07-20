@@ -22,7 +22,8 @@
  * A reply (server to client) is built up like this:
  *
  * - Return value as a uint32_t (4 bytes).
- * - On success: the body of the reply.
+ * - Size of the body of the reply as a uint32_t (4 bytes).
+ * - The body of the reply, if any.
  * 
  * The return value is whatever is returned by the backend brick, which is
  * defined as "negated errno" in FUSE, although here we use the absolute
@@ -36,7 +37,7 @@
 
 
 /** The start of the protocol: sent whenever a new client connects. */
-#define SOP_STRING "poep\n"
+#define SOP_STRING "poep\x0a"
 
 /**
  * Identifiers for fuse operations.

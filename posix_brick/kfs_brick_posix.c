@@ -109,8 +109,8 @@ kenny_getattr(const char *fusepath, struct stat *stbuf)
         KFS_DEBUG("Getattr on %s", fullpath);
         ret = lstat(fullpath, stbuf);
         if (ret == -1) {
-            KFS_ERROR("stat: %s", strerror(errno));
             ret = -errno;
+            KFS_ERROR("stat: %s", strerror(errno));
         }
         if (fullpath != pathbuf) {
             fullpath = KFS_FREE(fullpath);
@@ -140,8 +140,8 @@ kenny_readlink(const char *fusepath, char *buf, size_t size)
         /* Save room for the \0 byte. */
         ret = readlink(fullpath, buf, size - 1);
         if (ret == -1) {
-            KFS_ERROR("readlink: %s", strerror(errno));
             ret = -errno;
+            KFS_ERROR("readlink: %s", strerror(errno));
         } else {
             buf[ret] = '\0';
             ret = 0;
@@ -170,8 +170,8 @@ kenny_open(const char *fusepath, struct fuse_file_info *fi)
     } else {
         ret = open(fullpath, fi->flags);
         if (ret == -1) {
-            KFS_ERROR("open: %s", strerror(errno));
             ret = -errno;
+            KFS_ERROR("open: %s", strerror(errno));
         } else {
             /* Store file descriptor in FUSE file handle. */
             fi->fh = ret;
@@ -203,8 +203,8 @@ kenny_read(const char *fusepath, char *buf, size_t size, off_t offset, struct
     ret = 0;
     numread = pread(fi->fh, buf, size, offset);
     if (numread == -1) {
-        KFS_ERROR("pread: %s", strerror(errno));
         ret = -errno;
+        KFS_ERROR("pread: %s", strerror(errno));
     } else {
         ret = numread;
     }
@@ -233,8 +233,8 @@ kenny_setxattr(const char *fusepath, const char *name, const char *value, size_t
     } else {
         ret = lsetxattr(fullpath, name, value, size, flags);
         if (ret == -1) {
-            KFS_ERROR("lsetxattr: %s", strerror(errno));
             ret = -errno;
+            KFS_ERROR("lsetxattr: %s", strerror(errno));
         }
         if (fullpath != pathbuf) {
             fullpath = KFS_FREE(fullpath);
@@ -260,8 +260,8 @@ kenny_getxattr(const char *fusepath, const char *name, char *value, size_t size)
     } else {
         ret = lgetxattr(fullpath, name, value, size);
         if (ret == -1) {
-            KFS_ERROR("lgetxattr: %s", strerror(errno));
             ret = -errno;
+            KFS_ERROR("lgetxattr: %s", strerror(errno));
         }
         if (fullpath != pathbuf) {
             fullpath = KFS_FREE(fullpath);
@@ -287,8 +287,8 @@ kenny_listxattr(const char *fusepath, char *list, size_t size)
     } else {
         ret = llistxattr(fullpath, list, size);
         if (ret == -1) {
-            KFS_ERROR("llistxattr: %s", strerror(errno));
             ret = -errno;
+            KFS_ERROR("llistxattr: %s", strerror(errno));
         }
         if (fullpath != pathbuf) {
             fullpath = KFS_FREE(fullpath);
@@ -314,8 +314,8 @@ kenny_removexattr(const char *fusepath, const char *name)
     } else {
         ret = lremovexattr(fullpath, name);
         if (ret == -1) {
-            KFS_ERROR("lremovexattr: %s", strerror(errno));
             ret = -errno;
+            KFS_ERROR("lremovexattr: %s", strerror(errno));
         }
         if (fullpath != pathbuf) {
             fullpath = KFS_FREE(fullpath);
@@ -350,8 +350,8 @@ kenny_opendir(const char *fusepath, struct fuse_file_info *fi)
         KFS_DEBUG("Opening directory %s.", fullpath);
         fh->dir = opendir(fullpath);
         if (fh->dir == NULL) {
-            KFS_ERROR("opendir: %s", strerror(errno));
             ret = -errno;
+            KFS_ERROR("opendir: %s", strerror(errno));
             fh = KFS_FREE(fh);
         } else {
             fi->fh = fh_kenny2fuse(fh);
@@ -390,8 +390,8 @@ kenny_readdir(const char *fusepath, void *buf, fuse_fill_dir_t filler,
         mydirent = readdir(fh->dir);
         if (mydirent == NULL) {
             if (errno != 0) {
-                KFS_ERROR("readdir: %s", strerror(errno));
                 ret = -errno;
+                KFS_ERROR("readdir: %s", strerror(errno));
             }
             read_more = 0;
             break;
@@ -399,8 +399,9 @@ kenny_readdir(const char *fusepath, void *buf, fuse_fill_dir_t filler,
         /* Stat that entry. This is not (yet) POSIX compliant. */
         ret = fstatat(dirfd(fh->dir), mydirent->d_name, &mystat, 0);
         if (ret == -1) {
+            ret = -errno;
             KFS_ERROR("fstatat: %s", strerror(errno));
-            KFS_RETURN(-errno);
+            KFS_RETURN(ret);
         }
         /* Add it to the return-buffer. */
         ret = filler(buf, mydirent->d_name, &mystat, 0);
@@ -425,8 +426,8 @@ kenny_releasedir(const char *fusepath, struct fuse_file_info *fi)
     fh = fh_fuse2kenny(fi->fh);
     ret = closedir(fh->dir);
     if (ret == -1) {
-        KFS_ERROR("closedir: %s", strerror(errno));
         ret = -errno;
+        KFS_ERROR("closedir: %s", strerror(errno));
     } else {
         fh->dir = NULL;
         fh = KFS_FREE(fh);
@@ -462,8 +463,8 @@ kenny_utimens(const char *fusepath, const struct timespec tvnano[2])
         tvmicro[1].tv_usec = tvnano[1].tv_nsec / 1000;
         ret = utimes(fullpath, tvmicro);
         if (ret == -1) {
-            KFS_ERROR("utimes: %s", strerror(errno));
             ret = -errno;
+            KFS_ERROR("utimes: %s", strerror(errno));
         }
         if (fullpath != pathbuf) {
             fullpath = KFS_FREE(fullpath);

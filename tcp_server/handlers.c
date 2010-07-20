@@ -29,9 +29,9 @@ static int
 handle_getattr(client_t c, const char *rawop, size_t opsize)
 {
     uint32_t intbuf[13];
-    char resbuf[4 + sizeof(intbuf)];
+    char resbuf[8 + sizeof(intbuf)];
     char *fname = NULL;
-    uint32_t retval = 0;
+    uint32_t val = 0;
     int ret = 0;
     struct stat stbuf;
 
@@ -47,8 +47,8 @@ handle_getattr(client_t c, const char *rawop, size_t opsize)
     }
     KFS_ASSERT(ret <= 0);
     /* Send the absolute value over the wire. */
-    retval = htonl(-ret);
-    memcpy(resbuf, &retval, 4);
+    val = htonl(-ret);
+    memcpy(resbuf, &val, 4);
     if (ret == 0) {
         /* Call succeeded, also send the body. */
         /* TODO: Check if this cast is legal, portable and complete. */
@@ -65,14 +65,54 @@ handle_getattr(client_t c, const char *rawop, size_t opsize)
         intbuf[10] = htonl(stbuf.st_atime);
         intbuf[11] = htonl(stbuf.st_mtime);
         intbuf[12] = htonl(stbuf.st_ctime);
-        memcpy(resbuf + 4, intbuf, sizeof(intbuf));
+        val = htonl(sizeof(intbuf));
+        memcpy(resbuf + 4, &val, 4);
+        memcpy(resbuf + 8, intbuf, sizeof(intbuf));
         ret = send_msg(c, resbuf, sizeof(resbuf));
     } else {
         /* Call failed, return only the error code. */
-        ret = send_msg(c, resbuf, 4);
+        val = htonl(0);
+        memcpy(resbuf + 4, &val, 4);
+        ret = send_msg(c, resbuf, 8);
     }
     if (fname != NULL) {
         fname = KFS_FREE(fname);
+    }
+
+    KFS_RETURN(ret);
+}
+
+static int
+handle_readlink(client_t c, const char *rawop, size_t opsize)
+{
+    uint32_t val = 0;
+    int ret = 0;
+    size_t len = 0;
+    char *fusepath = NULL;
+    char resultbuf[PATHBUF_SIZE + 8];
+
+    KFS_ENTER();
+
+    fusepath = KFS_MALLOC(opsize + 1);
+    if (fusepath == NULL) {
+        ret = -ENOMEM;
+    } else {
+        fusepath = memcpy(fusepath, rawop, opsize);
+        fusepath[opsize] = '\0';
+        ret = oper->readlink(fusepath, resultbuf + 8, sizeof(resultbuf) - 8);
+    }
+    KFS_ASSERT(ret <= 0);
+    val = htonl(-ret);
+    memcpy(resultbuf, &val, 4);
+    if (ret == 0) {
+        len = strlen(resultbuf + 8);
+        val = htonl(len);
+        memcpy(resultbuf + 4, &val, 4);
+        ret = send_msg(c, resultbuf, len + 8);
+    } else {
+        val = htonl(0);
+        memcpy(resultbuf + 4, &val, 4);
+        ret = send_msg(c, resultbuf, 8);
     }
 
     KFS_RETURN(ret);
@@ -105,6 +145,7 @@ handle_quit(client_t c, const char *rawop, size_t opsize)
  */
 static const handler_t handlers[KFS_OPID_MAX_] = {
     [KFS_OPID_GETATTR] = handle_getattr,
+    [KFS_OPID_READLINK] = handle_readlink,
     [KFS_OPID_QUIT] = handle_quit,
 };
 

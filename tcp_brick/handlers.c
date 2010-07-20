@@ -23,7 +23,7 @@ kenny_getattr(const char *fusepath, struct stat *stbuf)
 {
     uint32_t intbuf[13];
     char resbuf[sizeof(intbuf)];
-    char *operbuf;
+    char *operbuf = NULL;
     uint32_t size_host = 0;
     uint32_t size_net = 0;
     uint16_t id = 0;
@@ -41,14 +41,15 @@ kenny_getattr(const char *fusepath, struct stat *stbuf)
     memcpy(operbuf, &size_net, 4);
     memcpy(operbuf + 4, &id, 2);
     memcpy(operbuf + 6, fusepath, size_host);
+    KFS_DEBUG("Test: x.");
     ret = do_operation(operbuf, size_host + 6, resbuf, sizeof(resbuf));
+    KFS_ASSERT(ret >= -1);
     operbuf = KFS_FREE(operbuf);
     if (ret == -1) {
         /* Something went wrong on our side, call it "remote I/O error." */
         KFS_RETURN(-EREMOTEIO);
     } else if (ret != 0) {
         /* Something went wrong on the other side, pass on the error. */
-        KFS_ASSERT(ret > 0);
         KFS_ERROR("Remote side responded with error %d: %s.", ret,
                 strerror(ret));
         KFS_RETURN(-ret);
@@ -72,18 +73,45 @@ kenny_getattr(const char *fusepath, struct stat *stbuf)
     KFS_RETURN(0);
 }
 
-#if 0
 /**
  * Read the target of a symlink.
  */
 static int
 kenny_readlink(const char *fusepath, char *buf, size_t size)
 {
+    uint32_t size_host = 0;
+    uint32_t size_net = 0;
+    uint16_t id = 0;
+    int ret = 0;
+    char *operbuf = NULL;
+
     KFS_ENTER();
 
-    KFS_RETURN(-1);
+    size_host = strlen(fusepath);
+    size_net = htonl(size_host);
+    id = htons(KFS_OPID_READLINK);
+    operbuf = KFS_MALLOC(size_host + 6);
+    if (operbuf == NULL) {
+        KFS_RETURN(-ENOMEM);
+    }
+    memcpy(operbuf, &size_net, 4);
+    memcpy(operbuf + 4, &id, 2);
+    memcpy(operbuf + 6, fusepath, size_host);
+    ret = do_operation(operbuf, size_host + 6, buf, size);
+    KFS_ASSERT(ret >= -1);
+    operbuf = KFS_FREE(operbuf);
+    if (ret == -1) {
+        KFS_RETURN(-EREMOTEIO);
+    } else if (ret != 0) {
+        KFS_ERROR("Remote side responded with error %d: %s.", ret,
+                strerror(ret));
+        KFS_RETURN(-ret);
+    }
+
+    KFS_RETURN(0);
 }
 
+#if 0
 static int
 kenny_open(const char *fusepath, struct fuse_file_info *fi)
 {
@@ -188,8 +216,8 @@ kenny_utimens(const char *fusepath, const struct timespec tvnano[2])
 
 static const struct fuse_operations handlers = {
     .getattr = kenny_getattr,
-#if 0
     .readlink = kenny_readlink,
+#if 0
     .open = kenny_open,
     .read = kenny_read,
     .setxattr = kenny_setxattr,
