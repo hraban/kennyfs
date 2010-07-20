@@ -143,6 +143,32 @@ handle_mkdir(client_t c, const char *rawop, size_t opsize)
     KFS_RETURN(0);
 }
 
+static int
+handle_unlink(client_t c, const char *rawop, size_t opsize)
+{
+    (void) opsize;
+
+    char resultbuf[8];
+    uint32_t val = 0;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    if (oper->unlink == NULL) {
+        ret = -ENOSYS;
+    } else {
+        ret = oper->unlink(rawop);
+    }
+    KFS_ASSERT(ret <= 0);
+    val = htonl(-ret);
+    memcpy(resultbuf, &val, 4);
+    val = htonl(0);
+    memcpy(resultbuf + 4, &val, 4);
+    ret = send_msg(c, resultbuf, 8);
+
+    KFS_RETURN(0);
+}
+
 /**
  * Handles a QUIT message.
  */
@@ -172,6 +198,7 @@ static const handler_t handlers[KFS_OPID_MAX_] = {
     [KFS_OPID_GETATTR] = handle_getattr,
     [KFS_OPID_READLINK] = handle_readlink,
     [KFS_OPID_MKDIR] = handle_mkdir,
+    [KFS_OPID_UNLINK] = handle_unlink,
     [KFS_OPID_QUIT] = handle_quit,
 };
 

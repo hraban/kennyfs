@@ -185,6 +185,33 @@ kenny_open(const char *fusepath, struct fuse_file_info *fi)
     KFS_RETURN(ret);
 }
 
+static int
+kenny_unlink(const char *fusepath)
+{
+    char pathbuf[PATHBUF_SIZE];
+    char *fullpath = NULL;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    ret = 0;
+    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
+    if (fullpath == NULL) {
+        ret = -errno;
+    } else {
+        ret = unlink(fullpath);
+        if (ret == -1) {
+            ret = -errno;
+            KFS_ERROR("unlink: %s", strerror(errno));
+        }
+        if (fullpath != pathbuf) {
+            fullpath = KFS_FREE(fullpath);
+        }
+    }
+
+    KFS_RETURN(ret);
+}
+
 /**
  * Read the contents of given file.
  * TODO: Check compliance of return value with API.
@@ -504,6 +531,7 @@ static const struct fuse_operations kenny_oper = {
     .getattr = kenny_getattr,
     .readlink = kenny_readlink,
     .open = kenny_open,
+    .unlink = kenny_unlink,
     .read = kenny_read,
     .setxattr = kenny_setxattr,
     .getxattr = kenny_getxattr,

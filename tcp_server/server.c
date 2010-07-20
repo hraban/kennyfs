@@ -38,6 +38,8 @@ struct kenny_conf {
 
 /** Temporary buffer for reading and writing to clients. */
 static char tmp_buf[BUF_LEN];
+/** Buffer for fixed message: "requested operation is not implemented." */
+static char MSG_NOSYS[8];
 /** All connected clients. */
 static client_t clients = NULL;
 /** Handlers for operations. */
@@ -125,7 +127,9 @@ process_operation(client_t c, const char *rawop, size_t opsize)
     KFS_DEBUG("Processing operation %hu.", opid);
     handler = handlers[opid];
     ret = 0;
-    if (handler != NULL) {
+    if (handler == NULL) {
+        ret = send_msg(c, MSG_NOSYS, sizeof(MSG_NOSYS));
+    } else {
         ret = handler(c, rawop + 2, opsize);
     }
 
@@ -655,6 +659,7 @@ int
 main(int argc, char *argv[])
 {
     struct kenny_conf conf;
+    uint32_t val = 0;
     int ret = 0;
     const struct kfs_brick_api *brick_api = NULL;
     const struct fuse_operations *kenny_oper = NULL;
@@ -678,6 +683,14 @@ main(int argc, char *argv[])
         ret = -1;
     }
     if (ret == 0) {
+        /* 
+         * Prepare buffer that is used in case a non-implemented operation is
+         * requested.
+         */
+        val = htonl(ENOSYS);
+        memcpy(MSG_NOSYS, &val, 4);
+        val = htonl(0);
+        memcpy(MSG_NOSYS + 4, &val, 4);
         /* Load the brick. */
         lib_handle = dlopen(conf.brick, RTLD_NOW | RTLD_LOCAL);
         if (lib_handle != NULL) {

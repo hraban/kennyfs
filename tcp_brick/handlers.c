@@ -136,6 +136,41 @@ kenny_mkdir(const char *path, mode_t mode)
     memcpy(operbuf + 6, &mode_serialised, 4);
     memcpy(operbuf + 10, path, size_host - 4);
     ret = do_operation(operbuf, size_host + 6, NULL, 0);
+    KFS_ASSERT(ret >= -1);
+    operbuf = KFS_FREE(operbuf);
+    if (ret == -1) {
+        KFS_RETURN(-EREMOTEIO);
+    } else if (ret != 0) {
+        KFS_ERROR("Remote side responded with error %d: %s.", ret,
+                strerror(ret));
+        KFS_RETURN(-ret);
+    }
+
+    KFS_RETURN(0);
+}
+
+static int
+kenny_unlink(const char *path)
+{
+    uint32_t size_host = 0;
+    uint32_t size_net = 0;
+    uint16_t id = 0;
+    int ret = 0;
+    char *operbuf = NULL;
+
+    KFS_ENTER();
+
+    size_host = strlen(path);
+    size_net = htonl(size_host);
+    id = htons(KFS_OPID_UNLINK);
+    operbuf = KFS_MALLOC(size_host + 6);
+    if (operbuf == NULL) {
+        KFS_RETURN(-ENOMEM);
+    }
+    memcpy(operbuf, &size_net, 4);
+    memcpy(operbuf + 4, &id, 2);
+    memcpy(operbuf + 6, path, size_host);
+    ret = do_operation(operbuf, size_host + 6, NULL, 0);
     operbuf = KFS_FREE(operbuf);
     if (ret == -1) {
         KFS_RETURN(-EREMOTEIO);
@@ -152,6 +187,7 @@ static const struct fuse_operations handlers = {
     .getattr = kenny_getattr,
     .readlink = kenny_readlink,
     .mkdir = kenny_mkdir,
+    .unlink = kenny_unlink,
 };
 
 const struct fuse_operations *
