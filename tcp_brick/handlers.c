@@ -19,40 +19,64 @@
 #include "tcp_brick/connection.h"
 #include "tcp_brick/tcp_brick.h"
 
+/**
+ * Wrapper around the do_operation() routine from tcp_brick/connection.c.
+ * Expects a buffer filled with `size' bytes, but starting at element 6 (not 0),
+ * meaning that the buffer is in fact 6 bytes bigger than `size'.  This wrapper
+ * will fill in the first six bytes as per the protocol. The return buffers are
+ * handled just as by do_operation(). On failure by the client (i.e.: by
+ * do_operation) -EREMOTEIO is returned, otherwise the negated value of whatever
+ * return value is sent back by the server is returned.
+ */
+static int
+do_operation_wrapper(enum fuse_op_id id, char *operbuf, size_t size,
+                     char *resbuf, size_t resbuflen)
+{
+    int ret = 0;
+    uint32_t size_serialised = 0;
+    uint16_t id_serialised = 0;
+
+    KFS_ENTER();
+
+    size_serialised = htonl(size);
+    id_serialised = htons(id);
+    memcpy(operbuf, &size_serialised, 4);
+    memcpy(operbuf + 4, &id_serialised, 2);
+    ret = do_operation(operbuf, size + 6, resbuf, resbuflen);
+    KFS_ASSERT(ret >= -1);
+    if (ret == -1) {
+        KFS_RETURN(-EREMOTEIO);
+    } else if (ret != 0) {
+        KFS_ERROR("Remote side responded with error %d: %s.", ret,
+                strerror(ret));
+        KFS_RETURN(-ret);
+    }
+
+    KFS_RETURN(0);
+}
+
 static int
 kenny_getattr(const char *fusepath, struct stat *stbuf)
 {
     uint32_t intbuf[13];
     char resbuf[sizeof(intbuf)];
     char *operbuf = NULL;
-    uint32_t size_host = 0;
-    uint32_t size_net = 0;
-    uint16_t id = 0;
+    size_t pathlen = 0;
     int ret = 0;
 
     KFS_ENTER();
 
-    size_host = strlen(fusepath);
-    size_net = htonl(size_host);
-    id = htons(KFS_OPID_GETATTR);
-    operbuf = KFS_MALLOC(size_host + 6);
+    pathlen = strlen(fusepath);
+    operbuf = KFS_MALLOC(pathlen + 6);
     if (operbuf == NULL) {
         KFS_RETURN(-ENOMEM);
     }
-    memcpy(operbuf, &size_net, 4);
-    memcpy(operbuf + 4, &id, 2);
-    memcpy(operbuf + 6, fusepath, size_host);
-    ret = do_operation(operbuf, size_host + 6, resbuf, sizeof(resbuf));
-    KFS_ASSERT(ret >= -1);
+    memcpy(operbuf + 6, fusepath, pathlen);
+    ret = do_operation_wrapper(KFS_OPID_GETATTR, operbuf, pathlen, resbuf,
+            sizeof(resbuf));
     operbuf = KFS_FREE(operbuf);
-    if (ret == -1) {
-        /* Something went wrong on our side, call it "remote I/O error." */
-        KFS_RETURN(-EREMOTEIO);
-    } else if (ret != 0) {
-        /* Something went wrong on the other side, pass on the error. */
-        KFS_ERROR("Remote side responded with error %d: %s.", ret,
-                strerror(ret));
-        KFS_RETURN(-ret);
+    if (ret != 0) {
+        KFS_RETURN(ret);
     }
     KFS_ASSERT(sizeof(intbuf) == sizeof(resbuf));
     memcpy(intbuf, resbuf, sizeof(intbuf));
@@ -77,38 +101,24 @@ kenny_getattr(const char *fusepath, struct stat *stbuf)
  * Read the target of a symlink.
  */
 static int
-kenny_readlink(const char *fusepath, char *buf, size_t size)
+kenny_readlink(const char *path, char *buf, size_t size)
 {
     char *operbuf = NULL;
     int ret = 0;
-    uint32_t size_host = 0;
-    uint32_t size_net = 0;
-    uint16_t id = 0;
+    size_t pathlen = 0;
 
     KFS_ENTER();
 
-    size_host = strlen(fusepath);
-    size_net = htonl(size_host);
-    id = htons(KFS_OPID_READLINK);
-    operbuf = KFS_MALLOC(size_host + 6);
+    pathlen = strlen(path);
+    operbuf = KFS_MALLOC(pathlen + 6);
     if (operbuf == NULL) {
         KFS_RETURN(-ENOMEM);
     }
-    memcpy(operbuf, &size_net, 4);
-    memcpy(operbuf + 4, &id, 2);
-    memcpy(operbuf + 6, fusepath, size_host);
-    ret = do_operation(operbuf, size_host + 6, buf, size);
-    KFS_ASSERT(ret >= -1);
+    memcpy(operbuf + 6, path, pathlen);
+    ret = do_operation_wrapper(KFS_OPID_READLINK, operbuf, pathlen, buf, size);
     operbuf = KFS_FREE(operbuf);
-    if (ret == -1) {
-        KFS_RETURN(-EREMOTEIO);
-    } else if (ret != 0) {
-        KFS_ERROR("Remote side responded with error %d: %s.", ret,
-                strerror(ret));
-        KFS_RETURN(-ret);
-    }
 
-    KFS_RETURN(0);
+    KFS_RETURN(ret);
 }
 
 static int
@@ -116,71 +126,44 @@ kenny_mkdir(const char *path, mode_t mode)
 {
     char *operbuf = NULL;
     int ret = 0;
-    uint32_t size_host = 0;
-    uint32_t size_net = 0;
+    size_t pathlen = 0;
     uint32_t mode_serialised;
-    uint16_t id = 0;
 
     KFS_ENTER();
 
-    size_host = strlen(path) + 4;
-    size_net = htonl(size_host);
-    id = htons(KFS_OPID_MKDIR);
+    pathlen = strlen(path);
     mode_serialised = htonl(mode);
-    operbuf = KFS_MALLOC(size_host + 6);
+    operbuf = KFS_MALLOC(pathlen + 4 + 6);
     if (operbuf == NULL) {
         KFS_RETURN(-ENOMEM);
     }
-    memcpy(operbuf, &size_net, 4);
-    memcpy(operbuf + 4, &id, 2);
     memcpy(operbuf + 6, &mode_serialised, 4);
-    memcpy(operbuf + 10, path, size_host - 4);
-    ret = do_operation(operbuf, size_host + 6, NULL, 0);
-    KFS_ASSERT(ret >= -1);
+    memcpy(operbuf + 10, path, pathlen);
+    ret = do_operation_wrapper(KFS_OPID_MKDIR, operbuf, pathlen + 4, NULL, 0);
     operbuf = KFS_FREE(operbuf);
-    if (ret == -1) {
-        KFS_RETURN(-EREMOTEIO);
-    } else if (ret != 0) {
-        KFS_ERROR("Remote side responded with error %d: %s.", ret,
-                strerror(ret));
-        KFS_RETURN(-ret);
-    }
 
-    KFS_RETURN(0);
+    KFS_RETURN(ret);
 }
 
 static int
 kenny_unlink(const char *path)
 {
-    uint32_t size_host = 0;
-    uint32_t size_net = 0;
-    uint16_t id = 0;
-    int ret = 0;
     char *operbuf = NULL;
+    size_t pathlen = 0;
+    int ret = 0;
 
     KFS_ENTER();
 
-    size_host = strlen(path);
-    size_net = htonl(size_host);
-    id = htons(KFS_OPID_UNLINK);
-    operbuf = KFS_MALLOC(size_host + 6);
+    pathlen = strlen(path);
+    operbuf = KFS_MALLOC(pathlen + 6);
     if (operbuf == NULL) {
         KFS_RETURN(-ENOMEM);
     }
-    memcpy(operbuf, &size_net, 4);
-    memcpy(operbuf + 4, &id, 2);
-    memcpy(operbuf + 6, path, size_host);
-    ret = do_operation(operbuf, size_host + 6, NULL, 0);
+    memcpy(operbuf + 6, path, pathlen);
+    ret = do_operation_wrapper(KFS_OPID_UNLINK, operbuf, pathlen, NULL, 0);
     operbuf = KFS_FREE(operbuf);
-    if (ret == -1) {
-        KFS_RETURN(-EREMOTEIO);
-    } else if (ret != 0) {
-        KFS_ERROR("Remote side responded with error %d: %s.", ret,
-                strerror(ret));
-        KFS_RETURN(-ret);
-    }
 
-    KFS_RETURN(0);
+    KFS_RETURN(ret);
 }
 
 static const struct fuse_operations handlers = {
