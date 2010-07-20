@@ -70,7 +70,9 @@ verify_client(client_t c)
 /**
  * Get a string with given number of bytes from the read buffer. Allocates a new
  * string and returns it, or NULL if not enough bytes are available in the read
- * buffer.
+ * buffer. The allocated buffer is always 1 byte larger than requested and that
+ * last byte is set to '\0'. This can be useful if it happens to be filled with
+ * a string but it needs not be used.
  */
 static char *
 read_readbuffer(client_t c, size_t n)
@@ -84,7 +86,7 @@ read_readbuffer(client_t c, size_t n)
     if (n > c->readbuf_used) {
         KFS_RETURN(NULL);
     }
-    result = KFS_MALLOC(n);
+    result = KFS_MALLOC(n + 1);
     contig = c->readbuf_end - c->readbuf_head;
     if (contig > n) {
         result = memcpy(result, c->readbuf_head, n);
@@ -95,13 +97,15 @@ read_readbuffer(client_t c, size_t n)
         c->readbuf_head = c->readbuf_start + (n - contig);
     }
     c->readbuf_used -= n;
+    result[n] = '\0';
 
     KFS_RETURN(result);
 }
 
 /**
  * Process a serialized operation for given client. Returns -1 if the serialized
- * object is corrupted.
+ * object is corrupted, if not it returns whatever the backend handler returned
+ * (which could also be -1, but for another reason).
  */
 static int
 process_operation(client_t c, const char *rawop, size_t opsize)
@@ -119,7 +123,6 @@ process_operation(client_t c, const char *rawop, size_t opsize)
         KFS_RETURN(-1);
     }
     KFS_DEBUG("Processing operation %hu.", opid);
-    /* TODO: Process. */
     handler = handlers[opid];
     ret = 0;
     if (handler != NULL) {

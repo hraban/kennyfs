@@ -305,7 +305,8 @@ do_operation(const char *operbuf, size_t operbufsize,
 
     KFS_ENTER();
 
-    KFS_ASSERT(resbuf != NULL && operbuf != NULL);
+    KFS_ASSERT((resbuf == NULL) == (resbufsize == 0));
+    KFS_ASSERT(operbuf != NULL);
     retries = MAX_RETRIES;
     for (;;) {
         ret = kfs_sendrecv(cached_sockfd, operbuf, operbufsize, retvalbuf, 8);
@@ -324,8 +325,10 @@ do_operation(const char *operbuf, size_t operbufsize,
                 KFS_ERROR("Reply from server is too large for buffer.");
                 KFS_RETURN(-1);
             }
-            /* Backend operation was also a success: retrieve the body. */
-            ret = kfs_recv(cached_sockfd, resbuf, result_size);
+            /* Backend operation also succeeded: retrieve the body (if any). */
+            if (result_size != 0) {
+                ret = kfs_recv(cached_sockfd, resbuf, result_size);
+            }
             if (ret == 0) {
                 /* Everything succeeded. */
                 KFS_RETURN(0);

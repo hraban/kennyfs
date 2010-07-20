@@ -28,22 +28,21 @@ static const struct fuse_operations *oper = NULL;
 static int
 handle_getattr(client_t c, const char *rawop, size_t opsize)
 {
+    (void) opsize;
+
     uint32_t intbuf[13];
     char resbuf[8 + sizeof(intbuf)];
-    char *fname = NULL;
     uint32_t val = 0;
     int ret = 0;
     struct stat stbuf;
 
     KFS_ENTER();
 
-    fname = KFS_MALLOC(opsize + 1);
-    if (fname == NULL) {
-        ret = -ENOMEM;
+    if (oper->getattr == NULL) {
+        /* Not implemented in backend. */
+        ret = -ENOSYS;
     } else {
-        fname = memcpy(fname, rawop, opsize);
-        fname[opsize] = '\0';
-        ret = oper->getattr(fname, &stbuf);
+        ret = oper->getattr(rawop, &stbuf);
     }
     KFS_ASSERT(ret <= 0);
     /* Send the absolute value over the wire. */
@@ -75,9 +74,6 @@ handle_getattr(client_t c, const char *rawop, size_t opsize)
         memcpy(resbuf + 4, &val, 4);
         ret = send_msg(c, resbuf, 8);
     }
-    if (fname != NULL) {
-        fname = KFS_FREE(fname);
-    }
 
     KFS_RETURN(ret);
 }
@@ -85,21 +81,19 @@ handle_getattr(client_t c, const char *rawop, size_t opsize)
 static int
 handle_readlink(client_t c, const char *rawop, size_t opsize)
 {
+    (void) opsize;
+
     uint32_t val = 0;
     int ret = 0;
     size_t len = 0;
-    char *fusepath = NULL;
     char resultbuf[PATHBUF_SIZE + 8];
 
     KFS_ENTER();
 
-    fusepath = KFS_MALLOC(opsize + 1);
-    if (fusepath == NULL) {
-        ret = -ENOMEM;
+    if (oper->readlink == NULL) {
+        ret = -ENOSYS;
     } else {
-        fusepath = memcpy(fusepath, rawop, opsize);
-        fusepath[opsize] = '\0';
-        ret = oper->readlink(fusepath, resultbuf + 8, sizeof(resultbuf) - 8);
+        ret = oper->readlink(rawop, resultbuf + 8, sizeof(resultbuf) - 8);
     }
     KFS_ASSERT(ret <= 0);
     val = htonl(-ret);
@@ -116,6 +110,37 @@ handle_readlink(client_t c, const char *rawop, size_t opsize)
     }
 
     KFS_RETURN(ret);
+}
+
+static int
+handle_mkdir(client_t c, const char *rawop, size_t opsize)
+{
+    (void) opsize;
+
+    char resultbuf[8];
+    uint32_t mode_serialised = 0;
+    uint32_t val = 0;
+    mode_t mode;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    memcpy(&mode_serialised, rawop, 4);
+    KFS_ASSERT(sizeof(uint32_t) >= sizeof(mode_t));
+    mode = ntohl(mode_serialised); 
+    if (oper->mkdir == NULL) {
+        ret = -ENOSYS;
+    } else {
+        ret = oper->mkdir(rawop + 4, mode);
+    }
+    KFS_ASSERT(ret <= 0);
+    val = htonl(-ret);
+    memcpy(resultbuf, &val, 4);
+    val = htonl(0);
+    memcpy(resultbuf + 4, &val, 4);
+    ret = send_msg(c, resultbuf, 8);
+
+    KFS_RETURN(0);
 }
 
 /**
@@ -146,6 +171,7 @@ handle_quit(client_t c, const char *rawop, size_t opsize)
 static const handler_t handlers[KFS_OPID_MAX_] = {
     [KFS_OPID_GETATTR] = handle_getattr,
     [KFS_OPID_READLINK] = handle_readlink,
+    [KFS_OPID_MKDIR] = handle_mkdir,
     [KFS_OPID_QUIT] = handle_quit,
 };
 
