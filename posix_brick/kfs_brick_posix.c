@@ -330,6 +330,32 @@ kenny_removexattr(const char *fusepath, const char *name)
  */
 
 static int
+kenny_mkdir(const char *fusepath, mode_t mode)
+{
+    char pathbuf[PATHBUF_SIZE];
+    int ret = 0;
+    char *fullpath = NULL;
+
+    KFS_ENTER();
+
+    ret = 0;
+    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
+    if (fullpath == NULL) {
+        KFS_RETURN(-errno);
+    }
+    ret = mkdir(fullpath, mode);
+    if (ret == -1) {
+        ret = -errno;
+        KFS_ERROR("mkdir: %s", strerror(errno));
+    }
+    if (fullpath != pathbuf) {
+        fullpath = KFS_FREE(fullpath);
+    }
+
+    KFS_RETURN(ret);
+}
+
+static int
 kenny_opendir(const char *fusepath, struct fuse_file_info *fi)
 {
     struct kenny_fh *fh = NULL;
@@ -483,6 +509,7 @@ static const struct fuse_operations kenny_oper = {
     .getxattr = kenny_getxattr,
     .listxattr = kenny_listxattr,
     .removexattr = kenny_removexattr,
+    .mkdir = kenny_mkdir,
     .opendir = kenny_opendir,
     .readdir = kenny_readdir,
     .releasedir = kenny_releasedir,
