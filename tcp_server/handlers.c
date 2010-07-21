@@ -565,11 +565,7 @@ handle_open(client_t c, const char *rawop, size_t opsize)
 {
     (void) opsize;
 
-    struct fuse_file_info ffi = {.flags = 0, .writepage = 0, .direct_io = 0,
-#if FUSE_VERSION >= 29
-        .nonseekable = 0,
-#endif
-        .keep_cache = 0, .flush = 0, .fh = 0, .lock_owner = 0};
+    struct fuse_file_info ffi;
     char resultbuf[16];
     size_t resultbuflen = 0;
     int ret = 0;
@@ -581,8 +577,9 @@ handle_open(client_t c, const char *rawop, size_t opsize)
     if (oper->open == NULL) {
         ret = -ENOSYS;
     } else {
+        memset(&ffi, 0, sizeof(ffi));
         memcpy(&val32, rawop, 4);
-        memcpy(&val8, rawop, 1);
+        memcpy(&val8, rawop + 4, 1);
         ffi.flags = ntohl(val32);
         ffi.direct_io = (val8 >> 0) & 1;
         ffi.keep_cache = (val8 >> 1) & 1;
@@ -611,6 +608,63 @@ handle_open(client_t c, const char *rawop, size_t opsize)
     val32 = htonl(resultbuflen - 8);
     memcpy(resultbuf + 4, &val32, 4);
     ret = send_msg(c, resultbuf, resultbuflen);
+
+    KFS_RETURN(ret);
+}
+
+/**
+ * Handle a read operation. The argument message is built up as follows:
+ *
+ * - filehandle (8 bytes).
+ * - number of bytes requested (4 bytes, network order).
+ * - offset in the file (8 bytes, network order).
+ *
+ * The return message is the contents of the file.
+ */
+static int
+handle_read(client_t c, const char *rawop, size_t opsize)
+{
+    (void) opsize;
+
+    struct fuse_file_info ffi;
+    char *resultbuf = NULL;
+    uint64_t offset = 0;
+    size_t len = 0;
+    int ret = 0;
+    uint32_t val32 = 0;
+
+    KFS_ENTER();
+
+    if (oper->read == NULL) {
+        ret = -ENOSYS;
+    } else {
+        memset(&ffi, 0, sizeof(ffi));
+        memcpy(&ffi.fh, rawop, 8);
+        memcpy(&val32, rawop + 8, 4);
+        len = ntohl(val32);
+        memcpy(&offset, rawop + 12, 1);
+        offset = ntohll(offset);
+        resultbuf = KFS_MALLOC(len + 8);
+        if (resultbuf == NULL) {
+            ret = -ENOBUFS;
+        } else {
+            ret = oper->read(NULL, resultbuf + 8, len, offset, &ffi);
+        }
+    }
+    /* This will fail. TODO: Fix the return value serialisation. */
+    KFS_ASSERT(ret <= 0);
+    val32 = htonl(-ret);
+    memcpy(resultbuf, &val32, 4);
+    if (ret < 0) {
+        len = 8;
+        val32 = htonl(0);
+    } else {
+        len = ret + 8;
+        val32 = htonl(ret);
+    }
+    /* The length of the result body. */
+    memcpy(resultbuf + 4, &val32, 4);
+    ret = send_msg(c, resultbuf, len);
 
     KFS_RETURN(ret);
 }
@@ -654,6 +708,7 @@ static const handler_t handlers[KFS_OPID_MAX_] = {
     [KFS_OPID_CHOWN] = handle_chown,
     [KFS_OPID_TRUNCATE] = handle_truncate,
     [KFS_OPID_OPEN] = handle_open,
+    [KFS_OPID_READ] = handle_read,
     [KFS_OPID_QUIT] = handle_quit,
 };
 

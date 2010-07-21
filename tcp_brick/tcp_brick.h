@@ -27,7 +27,8 @@
  * 
  * The return value is whatever is returned by the backend brick, which is
  * defined as "negated errno" in FUSE, although here we use the absolute
- * (because of the unsigned int).
+ * (because of the unsigned int). TODO: This is a problem because some
+ * operations (read()) return positive values as well.
  *
  * Note that there is NO authentication and NO encryption, so please only start
  * this in a trusted environment. All network operations are non-blocking but

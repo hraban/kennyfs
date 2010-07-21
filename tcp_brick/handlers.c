@@ -416,6 +416,32 @@ kenny_open(const char *path, struct fuse_file_info *ffi)
     KFS_RETURN(ret);
 }
 
+static int
+kenny_read(const char *path, char *buf, size_t nbyte, off_t offset, struct
+        fuse_file_info *ffi)
+{
+    (void) path;
+
+    char operbuf[20 + 6];
+    uint64_t val64 = 0;
+    uint32_t val32 = 0;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    /* The file handle. */
+    memcpy(operbuf + 6, &ffi->fh, 8);
+    /* The offset in the file. */
+    val64 = htonll(offset);
+    memcpy(operbuf + 14, &val64, 8);
+    /* The number of bytes to read. */
+    val32 = htonl(nbyte);
+    memcpy(operbuf + 22, &val32, 4);
+    ret = do_operation_wrapper(KFS_OPID_READ, operbuf, 20, buf, nbyte);
+
+    KFS_RETURN(ret);
+}
+
 static const struct fuse_operations handlers = {
     .getattr = kenny_getattr,
     .readlink = kenny_readlink,
@@ -430,6 +456,7 @@ static const struct fuse_operations handlers = {
     .chown = kenny_chown,
     .truncate = kenny_truncate,
     .open = kenny_open,
+    .read = kenny_read,
 };
 
 const struct fuse_operations *
