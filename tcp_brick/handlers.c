@@ -1,5 +1,7 @@
 /**
- * Handlers for operations passed down to the kennyfs TCP brick.
+ * Handlers for operations passed down to the kennyfs TCP brick. Documentation
+ * for the format of operation messages and their return counterparts can be
+ * found in the TCP brick server documentation.
  */
 
 #define FUSE_USE_VERSION 26
@@ -122,6 +124,35 @@ kenny_readlink(const char *path, char *buf, size_t size)
 }
 
 static int
+kenny_mknod(const char *path, mode_t mode, dev_t dev)
+{
+    char *operbuf = NULL;
+    int ret = 0;
+    size_t pathlen = 0;
+    uint32_t mode_serialised;
+
+    KFS_ENTER();
+
+    if (dev != 0) {
+        KFS_INFO("Calling mknod with non-zero dev arg is not supported "
+                 "by the TCP brick.");
+        KFS_RETURN(-ENOTSUP);
+    }
+    pathlen = strlen(path);
+    mode_serialised = htonl(mode);
+    operbuf = KFS_MALLOC(pathlen + 4 + 6);
+    if (operbuf == NULL) {
+        KFS_RETURN(-ENOMEM);
+    }
+    memcpy(operbuf + 6, &mode_serialised, 4);
+    memcpy(operbuf + 10, path, pathlen);
+    ret = do_operation_wrapper(KFS_OPID_MKDIR, operbuf, pathlen + 4, NULL, 0);
+    operbuf = KFS_FREE(operbuf);
+
+    KFS_RETURN(ret);
+}
+
+static int
 kenny_mkdir(const char *path, mode_t mode)
 {
     char *operbuf = NULL;
@@ -166,11 +197,205 @@ kenny_unlink(const char *path)
     KFS_RETURN(ret);
 }
 
+static int
+kenny_rmdir(const char *path)
+{
+    char *operbuf = NULL;
+    size_t pathlen = 0;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    pathlen = strlen(path);
+    operbuf = KFS_MALLOC(pathlen + 6);
+    if (operbuf == NULL) {
+        KFS_RETURN(-ENOMEM);
+    }
+    memcpy(operbuf + 6, path, pathlen);
+    ret = do_operation_wrapper(KFS_OPID_RMDIR, operbuf, pathlen, NULL, 0);
+    operbuf = KFS_FREE(operbuf);
+
+    KFS_RETURN(ret);
+}
+
+static int
+kenny_symlink(const char *path1, const char *path2)
+{
+    char *operbuf = NULL;
+    size_t path1len = 0;
+    size_t path2len = 0;
+    size_t opersize = 0;
+    uint32_t path1len_net = 0;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    path1len = strlen(path1);
+    path2len = strlen(path2);
+    opersize = 4 + path1len + 1 + path2len;
+    operbuf = KFS_MALLOC(opersize + 6);
+    if (operbuf == NULL) {
+        KFS_RETURN(-ENOMEM);
+    }
+    path1len_net = htonl(path1len);
+    memcpy(operbuf + 6, &path1len_net, 4);
+    memcpy(operbuf + 10, path1, path1len);
+    operbuf[10 + path1len] = '\0';
+    memcpy(operbuf + 10 + path1len + 1, path2, path2len);
+    ret = do_operation_wrapper(KFS_OPID_SYMLINK, operbuf, opersize, NULL, 0);
+    operbuf = KFS_FREE(operbuf);
+
+    KFS_RETURN(ret);
+}
+
+static int
+kenny_rename(const char *path1, const char *path2)
+{
+    char *operbuf = NULL;
+    size_t path1len = 0;
+    size_t path2len = 0;
+    size_t opersize = 0;
+    uint32_t path1len_net = 0;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    path1len = strlen(path1);
+    path2len = strlen(path2);
+    opersize = 4 + path1len + 1 + path2len;
+    operbuf = KFS_MALLOC(opersize + 6);
+    if (operbuf == NULL) {
+        KFS_RETURN(-ENOMEM);
+    }
+    path1len_net = htonl(path1len);
+    memcpy(operbuf + 6, &path1len_net, 4);
+    memcpy(operbuf + 10, path1, path1len);
+    operbuf[10 + path1len] = '\0';
+    memcpy(operbuf + 10 + path1len + 1, path2, path2len);
+    ret = do_operation_wrapper(KFS_OPID_RENAME, operbuf, opersize, NULL, 0);
+    operbuf = KFS_FREE(operbuf);
+
+    KFS_RETURN(ret);
+}
+
+static int
+kenny_link(const char *path1, const char *path2)
+{
+    char *operbuf = NULL;
+    size_t path1len = 0;
+    size_t path2len = 0;
+    size_t opersize = 0;
+    uint32_t path1len_net = 0;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    path1len = strlen(path1);
+    path2len = strlen(path2);
+    opersize = 4 + path1len + 1 + path2len;
+    operbuf = KFS_MALLOC(opersize + 6);
+    if (operbuf == NULL) {
+        KFS_RETURN(-ENOMEM);
+    }
+    path1len_net = htonl(path1len);
+    memcpy(operbuf + 6, &path1len_net, 4);
+    memcpy(operbuf + 10, path1, path1len);
+    operbuf[10 + path1len] = '\0';
+    memcpy(operbuf + 10 + path1len + 1, path2, path2len);
+    ret = do_operation_wrapper(KFS_OPID_LINK, operbuf, opersize, NULL, 0);
+    operbuf = KFS_FREE(operbuf);
+
+    KFS_RETURN(ret);
+}
+
+static int
+kenny_chmod(const char *path, mode_t mode)
+{
+    char *operbuf = NULL;
+    int ret = 0;
+    size_t pathlen = 0;
+    uint32_t mode_serialised;
+
+    KFS_ENTER();
+
+    pathlen = strlen(path);
+    mode_serialised = htonl(mode);
+    operbuf = KFS_MALLOC(pathlen + 4 + 6);
+    if (operbuf == NULL) {
+        KFS_RETURN(-ENOMEM);
+    }
+    memcpy(operbuf + 6, &mode_serialised, 4);
+    memcpy(operbuf + 10, path, pathlen);
+    ret = do_operation_wrapper(KFS_OPID_CHMOD, operbuf, pathlen + 4, NULL, 0);
+    operbuf = KFS_FREE(operbuf);
+
+    KFS_RETURN(ret);
+}
+
+static int
+kenny_chown(const char *path, uid_t uid, gid_t gid)
+{
+    char *operbuf = NULL;
+    int ret = 0;
+    size_t pathlen = 0;
+    uint32_t uid_serialised;
+    uint32_t gid_serialised;
+
+    KFS_ENTER();
+
+    pathlen = strlen(path);
+    uid_serialised = htonl(uid);
+    gid_serialised = htonl(gid);
+    operbuf = KFS_MALLOC(pathlen + 8 + 6);
+    if (operbuf == NULL) {
+        KFS_RETURN(-ENOMEM);
+    }
+    memcpy(operbuf + 6, &uid_serialised, 4);
+    memcpy(operbuf + 10, &gid_serialised, 4);
+    memcpy(operbuf + 14, path, pathlen);
+    ret = do_operation_wrapper(KFS_OPID_CHOWN, operbuf, pathlen + 8, NULL, 0);
+    operbuf = KFS_FREE(operbuf);
+
+    KFS_RETURN(ret);
+}
+
+static int
+kenny_truncate(const char *path, off_t offset)
+{
+    char *operbuf = NULL;
+    int ret = 0;
+    size_t pathlen = 0;
+    uint64_t offset_serialised;
+
+    KFS_ENTER();
+
+    pathlen = strlen(path);
+    offset_serialised = htonll(offset);
+    operbuf = KFS_MALLOC(pathlen + 8 + 6);
+    if (operbuf == NULL) {
+        KFS_RETURN(-ENOMEM);
+    }
+    memcpy(operbuf + 6, &offset_serialised, 4);
+    memcpy(operbuf + 14, path, pathlen);
+    ret = do_operation_wrapper(KFS_OPID_CHOWN, operbuf, pathlen + 8, NULL, 0);
+    operbuf = KFS_FREE(operbuf);
+
+    KFS_RETURN(ret);
+}
+
 static const struct fuse_operations handlers = {
     .getattr = kenny_getattr,
     .readlink = kenny_readlink,
+    .mknod = kenny_mknod,
     .mkdir = kenny_mkdir,
     .unlink = kenny_unlink,
+    .rmdir = kenny_rmdir,
+    .symlink = kenny_symlink,
+    .rename = kenny_rename,
+    .link = kenny_link,
+    .chmod = kenny_chmod,
+    .chown = kenny_chown,
+    .truncate = kenny_truncate,
 };
 
 const struct fuse_operations *

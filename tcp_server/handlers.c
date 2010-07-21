@@ -3,8 +3,10 @@
  * API to FUSE API by deserializing the operation arguments. Actual work is done
  * by the dynamically loaded backend brick(s).
  *
- * Separate file from rest of server code because that one was getting really
- * big.
+ * Comments of operation handlers in this file describe the format of the
+ * operation and the return message. These comments are about not about the
+ * headers (the leading bytes with fixed meaning, see tcp_brick.h) but about the
+ * variable sized body parts with operation-defined data.
  */
 
 #define FUSE_USE_VERSION 26
@@ -25,6 +27,28 @@
 
 static const struct fuse_operations *oper = NULL;
 
+/**
+ * Handle a getattr operation. The argument message is the raw pathname. The
+ * return message is a struct stat serialised as 13 htonl()'ed uint32_t's. The
+ * elements are ordered as follows:
+ *
+ * - st_dev
+ * - st_ino
+ * - st_mode
+ * - st_nlink
+ * - st_uid
+ * - st_gid
+ * - st_rdev
+ * - st_size
+ * - st_blksize
+ * - st_blocks
+ * - st_atime
+ * - st_mtime
+ * - st_ctime
+ *
+ * This assumes that all those values are of a type that entirely fits in a
+ * uint32_t. TODO: Check if that is always the case.
+ */
 static int
 handle_getattr(client_t c, const char *rawop, size_t opsize)
 {
@@ -50,7 +74,6 @@ handle_getattr(client_t c, const char *rawop, size_t opsize)
     memcpy(resbuf, &val, 4);
     if (ret == 0) {
         /* Call succeeded, also send the body. */
-        /* TODO: Check if this cast is legal, portable and complete. */
         intbuf[0] = htonl(stbuf.st_dev);
         intbuf[1] = htonl(stbuf.st_ino);
         intbuf[2] = htonl(stbuf.st_mode);
@@ -78,6 +101,10 @@ handle_getattr(client_t c, const char *rawop, size_t opsize)
     KFS_RETURN(ret);
 }
 
+/**
+ * Handle a readlink operation. The argument message is the raw pathname. The
+ * return message is the raw contents of the link.
+ */
 static int
 handle_readlink(client_t c, const char *rawop, size_t opsize)
 {
@@ -112,6 +139,48 @@ handle_readlink(client_t c, const char *rawop, size_t opsize)
     KFS_RETURN(ret);
 }
 
+/**
+ * Handle a mknod operation. The argument message is a mode_t cast to a uint32_t
+ * passed through htonl() (4 bytes) followed by the pathname. The return message
+ * is empty. There is no `dev' argument: it is always 0. Anything else is not
+ * supported by this protocol.
+ */
+static int
+handle_mknod(client_t c, const char *rawop, size_t opsize)
+{
+    (void) opsize;
+
+    char resultbuf[8];
+    uint32_t mode_serialised = 0;
+    uint32_t val = 0;
+    mode_t mode;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    memcpy(&mode_serialised, rawop, 4);
+    KFS_ASSERT(sizeof(uint32_t) >= sizeof(mode_t));
+    mode = ntohl(mode_serialised); 
+    if (oper->mknod == NULL) {
+        ret = -ENOSYS;
+    } else {
+        ret = oper->mknod(rawop + 4, mode, 0);
+    }
+    KFS_ASSERT(ret <= 0);
+    val = htonl(-ret);
+    memcpy(resultbuf, &val, 4);
+    val = htonl(0);
+    memcpy(resultbuf + 4, &val, 4);
+    ret = send_msg(c, resultbuf, 8);
+
+    KFS_RETURN(ret);
+}
+
+/**
+ * Handle a mkdir operation. The argument message is a mode_t cast to a uint32_t
+ * passed through htonl() (4 bytes) followed by the pathname. The return message
+ * is empty.
+ */
 static int
 handle_mkdir(client_t c, const char *rawop, size_t opsize)
 {
@@ -140,9 +209,13 @@ handle_mkdir(client_t c, const char *rawop, size_t opsize)
     memcpy(resultbuf + 4, &val, 4);
     ret = send_msg(c, resultbuf, 8);
 
-    KFS_RETURN(0);
+    KFS_RETURN(ret);
 }
 
+/**
+ * Handle an unlink operation. The argument message is the pathname. The return
+ * message is empty.
+ */
 static int
 handle_unlink(client_t c, const char *rawop, size_t opsize)
 {
@@ -166,7 +239,305 @@ handle_unlink(client_t c, const char *rawop, size_t opsize)
     memcpy(resultbuf + 4, &val, 4);
     ret = send_msg(c, resultbuf, 8);
 
-    KFS_RETURN(0);
+    KFS_RETURN(ret);
+}
+
+/**
+ * Handle a rmdir operation. The argument message is the pathname. The return
+ * message is empty.
+ */
+static int
+handle_rmdir(client_t c, const char *rawop, size_t opsize)
+{
+    (void) opsize;
+
+    char resultbuf[8];
+    uint32_t val = 0;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    if (oper->rmdir == NULL) {
+        ret = -ENOSYS;
+    } else {
+        ret = oper->rmdir(rawop);
+    }
+    KFS_ASSERT(ret <= 0);
+    val = htonl(-ret);
+    memcpy(resultbuf, &val, 4);
+    val = htonl(0);
+    memcpy(resultbuf + 4, &val, 4);
+    ret = send_msg(c, resultbuf, 8);
+
+    KFS_RETURN(ret);
+}
+
+/**
+ * Handle a symlink operation. The argument message is the length of
+ * path1 cast to a uint32_t passed through htonl() (4 bytes) followed by path1,
+ * followed by one byte with value 0, followed by path2. The return message is
+ * empty.
+ */
+static int
+handle_symlink(client_t c, const char *rawop, size_t opsize)
+{
+    (void) opsize;
+
+    char resultbuf[8];
+    uint32_t val = 0;
+    uint32_t path1len = 0;
+    const char *path1 = NULL;
+    const char *path2 = NULL;
+    int ret2client = 0;
+    int ret2server = 0;
+    int temp = 0;
+
+    KFS_ENTER();
+
+    ret2server = 0;
+    if (oper->symlink == NULL) {
+        ret2client = -ENOSYS;
+    } else {
+        memcpy(&path1len, rawop, 4);
+        path1len = ntohl(path1len);
+        /* Check that the paths are separated by a '\0'-byte. */
+        if (rawop[4 + path1len] != '\0') {
+            ret2client = -EINVAL;
+            /* Corrupt argument. */
+            ret2server = -1;
+        } else {
+            path1 = rawop + 4;
+            path2 = rawop + 4 + path1len + 1;
+            ret2client = oper->symlink(path1, path2);
+        }
+    }
+    KFS_ASSERT(ret2client <= 0);
+    val = htonl(-ret2client);
+    memcpy(resultbuf, &val, 4);
+    val = htonl(0);
+    memcpy(resultbuf + 4, &val, 4);
+    temp = send_msg(c, resultbuf, 8);
+    if (ret2server == 0) {
+        ret2server = temp;
+    }
+
+    KFS_RETURN(ret2server);
+}
+
+/**
+ * Handle a rename operation. The argument message is the length of path1 cast
+ * to a uint32_t passed through htonl() (4 bytes) followed by path1, followed by
+ * one byte with value 0, followed by path2. The return message is empty.
+ */
+static int
+handle_rename(client_t c, const char *rawop, size_t opsize)
+{
+    (void) opsize;
+
+    char resultbuf[8];
+    uint32_t val = 0;
+    uint32_t path1len = 0;
+    const char *path1 = NULL;
+    const char *path2 = NULL;
+    int ret2client = 0;
+    int ret2server = 0;
+    int temp = 0;
+
+    KFS_ENTER();
+
+    ret2server = 0;
+    if (oper->rename == NULL) {
+        ret2client = -ENOSYS;
+    } else {
+        memcpy(&path1len, rawop, 4);
+        path1len = ntohl(path1len);
+        /* Check that the paths are separated by a '\0'-byte. */
+        if (rawop[4 + path1len] != '\0') {
+            ret2client = -EINVAL;
+            /* Corrupt argument. */
+            ret2server = -1;
+        } else {
+            path1 = rawop + 4;
+            path2 = rawop + 4 + path1len + 1;
+            ret2client = oper->rename(path1, path2);
+        }
+    }
+    KFS_ASSERT(ret2client <= 0);
+    val = htonl(-ret2client);
+    memcpy(resultbuf, &val, 4);
+    val = htonl(0);
+    memcpy(resultbuf + 4, &val, 4);
+    temp = send_msg(c, resultbuf, 8);
+    if (ret2server == 0) {
+        ret2server = temp;
+    }
+
+    KFS_RETURN(ret2server);
+}
+
+/**
+ * Handle a link operation. The argument message is the length of path1 cast to
+ * a uint32_t passed through htonl() (4 bytes) followed by path1, followed by
+ * one byte with value 0, followed by path2. The return message is empty.
+ */
+static int
+handle_link(client_t c, const char *rawop, size_t opsize)
+{
+    (void) opsize;
+
+    char resultbuf[8];
+    uint32_t val = 0;
+    uint32_t path1len = 0;
+    const char *path1 = NULL;
+    const char *path2 = NULL;
+    int ret2client = 0;
+    int ret2server = 0;
+    int temp = 0;
+
+    KFS_ENTER();
+
+    ret2server = 0;
+    if (oper->link == NULL) {
+        ret2client = -ENOSYS;
+    } else {
+        memcpy(&path1len, rawop, 4);
+        path1len = ntohl(path1len);
+        /* Check that the paths are separated by a '\0'-byte. */
+        if (rawop[4 + path1len] != '\0') {
+            ret2client = -EINVAL;
+            /* Corrupt argument. */
+            ret2server = -1;
+        } else {
+            path1 = rawop + 4;
+            path2 = rawop + 4 + path1len + 1;
+            ret2client = oper->link(path1, path2);
+        }
+    }
+    KFS_ASSERT(ret2client <= 0);
+    val = htonl(-ret2client);
+    memcpy(resultbuf, &val, 4);
+    val = htonl(0);
+    memcpy(resultbuf + 4, &val, 4);
+    temp = send_msg(c, resultbuf, 8);
+    if (ret2server == 0) {
+        ret2server = temp;
+    }
+
+    KFS_RETURN(ret2server);
+}
+
+/**
+ * Handle a chmod operation. The argument message is a mode_t cast to a uint32_t
+ * passed through htonl() (4 bytes) followed by the pathname. The return message
+ * is empty.
+ */
+static int
+handle_chmod(client_t c, const char *rawop, size_t opsize)
+{
+    (void) opsize;
+
+    char resultbuf[8];
+    uint32_t mode_serialised = 0;
+    uint32_t val = 0;
+    mode_t mode;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    memcpy(&mode_serialised, rawop, 4);
+    KFS_ASSERT(sizeof(uint32_t) >= sizeof(mode_t));
+    mode = ntohl(mode_serialised); 
+    if (oper->chmod == NULL) {
+        ret = -ENOSYS;
+    } else {
+        ret = oper->chmod(rawop + 4, mode);
+    }
+    KFS_ASSERT(ret <= 0);
+    val = htonl(-ret);
+    memcpy(resultbuf, &val, 4);
+    val = htonl(0);
+    memcpy(resultbuf + 4, &val, 4);
+    ret = send_msg(c, resultbuf, 8);
+
+    KFS_RETURN(ret);
+}
+
+/**
+ * Handle a chown operation. The argument message is a uid_t cast to a uint32_t
+ * passed through htonl() (4 bytes), followed by a gid_t (same story, 4 bytes),
+ * followed by the pathname. The return message is empty. TODO: Check if those
+ * casts to uint32_t are portable.
+ */
+static int
+handle_chown(client_t c, const char *rawop, size_t opsize)
+{
+    (void) opsize;
+
+    char resultbuf[8];
+    uint32_t uid_serialised = 0;
+    uint32_t gid_serialised = 0;
+    uint32_t val = 0;
+    uid_t uid = 0;
+    gid_t gid = 0;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    memcpy(&uid_serialised, rawop, 4);
+    memcpy(&gid_serialised, rawop, 4);
+    KFS_ASSERT(sizeof(uint32_t) >= sizeof(uid_t));
+    KFS_ASSERT(sizeof(uint32_t) >= sizeof(gid_t));
+    uid = ntohl(uid_serialised);
+    gid = ntohl(gid_serialised);
+    if (oper->chown == NULL) {
+        ret = -ENOSYS;
+    } else {
+        ret = oper->chown(rawop + 8, uid, gid);
+    }
+    KFS_ASSERT(ret <= 0);
+    val = htonl(-ret);
+    memcpy(resultbuf, &val, 4);
+    val = htonl(0);
+    memcpy(resultbuf + 4, &val, 4);
+    ret = send_msg(c, resultbuf, 8);
+
+    KFS_RETURN(ret);
+}
+
+/**
+ * Handle a truncate operation. The argument message is a off_t cast to a
+ * uint64_t passed through htonll() (8 bytes) followed by the pathname. The
+ * return message is empty.
+ */
+static int
+handle_truncate(client_t c, const char *rawop, size_t opsize)
+{
+    (void) opsize;
+
+    char resultbuf[8];
+    uint64_t offset_serialised = 0;
+    uint32_t val = 0;
+    off_t offset = 0;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    memcpy(&offset_serialised, rawop, 8);
+    KFS_ASSERT(sizeof(uint64_t) >= sizeof(off_t));
+    offset = ntohll(offset_serialised);
+    if (oper->truncate == NULL) {
+        ret = -ENOSYS;
+    } else {
+        ret = oper->truncate(rawop + 8, offset);
+    }
+    KFS_ASSERT(ret <= 0);
+    val = htonl(-ret);
+    memcpy(resultbuf, &val, 4);
+    val = htonl(0);
+    memcpy(resultbuf + 4, &val, 4);
+    ret = send_msg(c, resultbuf, 8);
+
+    KFS_RETURN(ret);
 }
 
 /**
@@ -197,8 +568,16 @@ handle_quit(client_t c, const char *rawop, size_t opsize)
 static const handler_t handlers[KFS_OPID_MAX_] = {
     [KFS_OPID_GETATTR] = handle_getattr,
     [KFS_OPID_READLINK] = handle_readlink,
+    [KFS_OPID_MKNOD] = handle_mknod,
     [KFS_OPID_MKDIR] = handle_mkdir,
     [KFS_OPID_UNLINK] = handle_unlink,
+    [KFS_OPID_RMDIR] = handle_rmdir,
+    [KFS_OPID_SYMLINK] = handle_symlink,
+    [KFS_OPID_RENAME] = handle_rename,
+    [KFS_OPID_LINK] = handle_link,
+    [KFS_OPID_CHMOD] = handle_chmod,
+    [KFS_OPID_CHOWN] = handle_chown,
+    [KFS_OPID_TRUNCATE] = handle_truncate,
     [KFS_OPID_QUIT] = handle_quit,
 };
 

@@ -33,6 +33,9 @@
  * this in a trusted environment. All network operations are non-blocking but
  * all operations are blocking (i.e.: one slow client will not clog the server
  * but one client requesting something from a slow drive will).
+ *
+ * Explanation about the serialized form of each operation can be found in the
+ * TCP brick server documentation / comments.
  */
 
 

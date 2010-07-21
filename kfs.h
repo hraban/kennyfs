@@ -31,6 +31,16 @@
  */
 #define PATHBUF_SIZE 256
 
+#ifndef htonll
+#  ifdef _BIG_ENDIAN
+#    define htonll(x) (x)
+#    define ntohll(x) (x)
+#  else
+#    define htonll(x) ((((uint64_t)htonl(x)) << 32) + htonl((x) >> 32))
+#    define ntohll(x) ((((uint64_t)ntohl(x)) << 32) + ntohl((x) >> 32))
+#  endif
+#endif
+
 typedef unsigned int uint_t;
 
 #endif
