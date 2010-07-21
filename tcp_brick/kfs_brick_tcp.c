@@ -2,7 +2,7 @@
  * KennyFS backend forwarding everything to a kennyfs server over TCP.
  */
 
-#define FUSE_USE_VERSION 26
+#define FUSE_USE_VERSION 29
 
 #include "tcp_brick/kfs_brick_tcp.h"
 

@@ -3,9 +3,9 @@
  * network clients.
  */
 
-#include "tcp_server/server.h"
+#define FUSE_USE_VERSION 29
 
-#define FUSE_USE_VERSION 26
+#include "tcp_server/server.h"
 
 #include <dlfcn.h>
 #include <errno.h>
@@ -159,6 +159,7 @@ process_readbuffer(client_t c)
             KFS_RETURN(0);
         }
         ret = memcmp(SOP_STRING, raw, size);
+        KFS_FREE(raw);
         if (ret != 0) {
             /* Did not get proper start of protocol message from client. */
             /* TODO: Send back proper error message. */

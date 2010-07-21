@@ -9,7 +9,7 @@
  * variable sized body parts with operation-defined data.
  */
 
-#define FUSE_USE_VERSION 26
+#define FUSE_USE_VERSION 29
 
 #include "tcp_server/handlers.h"
 
@@ -541,6 +541,81 @@ handle_truncate(client_t c, const char *rawop, size_t opsize)
 }
 
 /**
+ * Handle an open operation. The argument message consists of a serialized
+ * fuse_file_info struct followed by the pathname. The struct is serialized as
+ * follows:
+ *
+ * - 4 bytes: open flags, cast to uint32_t, in network order.
+ * - 1 byte: fuse flags, a bitmask of the following flags (from lsb to msb):
+ *   direct_io, keep_cache, nonseekable.
+ *
+ * The return message is an 8-byte character array that will be used to uniquely
+ * identify this file in further operations (a file handler). It is, in fact,
+ * the fh element, but that is an implementation detail.
+ *
+ * If the FUSE library installed on the server has a version lower than 2.9 the
+ * nonseekable flag is not supported: an operation with that flag set will
+ * result in a ENOTSUP error being sent back to the client.
+ *
+ * TODO: The flags element is an int in the original struct, which is larger
+ * than a uint32_t on some architectures. Can that become a problem?
+ */
+static int
+handle_open(client_t c, const char *rawop, size_t opsize)
+{
+    (void) opsize;
+
+    struct fuse_file_info ffi = {.flags = 0, .writepage = 0, .direct_io = 0,
+#if FUSE_VERSION >= 29
+        .nonseekable = 0,
+#endif
+        .keep_cache = 0, .flush = 0, .fh = 0, .lock_owner = 0};
+    char resultbuf[16];
+    size_t resultbuflen = 0;
+    int ret = 0;
+    uint32_t val32 = 0;
+    uint8_t val8 = 0;
+
+    KFS_ENTER();
+
+    if (oper->open == NULL) {
+        ret = -ENOSYS;
+    } else {
+        memcpy(&val32, rawop, 4);
+        memcpy(&val8, rawop, 1);
+        ffi.flags = ntohl(val32);
+        ffi.direct_io = (val8 >> 0) & 1;
+        ffi.keep_cache = (val8 >> 1) & 1;
+#if FUSE_VERSION >= 29
+        ffi.nonseekable = (val8 >> 2) & 1;
+#else
+        if ((val8 >> 2) & 1) {
+            KFS_INFO("Flag 'nonseekable' set during open request, not supported"
+                     " by this server's FUSE library. Please upgrade to >=2.9");
+            ret = -ENOTSUP;
+        } else
+#endif
+        ret = oper->open(rawop + 5, &ffi);
+    }
+    KFS_ASSERT(ret <= 0);
+    val32 = htonl(-ret);
+    memcpy(resultbuf, &val32, 4);
+    if (ret == 0) {
+        /* Success: send back the (raw) filehandle. */
+        resultbuflen = 16;
+        memcpy(resultbuf + 8, &ffi.fh, 8);
+    } else {
+        resultbuflen = 8;
+    }
+    /* The length of the result body. */
+    val32 = htonl(resultbuflen - 8);
+    memcpy(resultbuf + 4, &val32, 4);
+    ret = send_msg(c, resultbuf, resultbuflen);
+
+    KFS_RETURN(ret);
+}
+
+/**
  * Handles a QUIT message.
  */
 static int
@@ -578,6 +653,7 @@ static const handler_t handlers[KFS_OPID_MAX_] = {
     [KFS_OPID_CHMOD] = handle_chmod,
     [KFS_OPID_CHOWN] = handle_chown,
     [KFS_OPID_TRUNCATE] = handle_truncate,
+    [KFS_OPID_OPEN] = handle_open,
     [KFS_OPID_QUIT] = handle_quit,
 };
 

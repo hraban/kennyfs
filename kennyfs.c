@@ -2,7 +2,7 @@
  * KennyFS command-line frontend. Lots of values are hard-coded (for now).
  */
 
-#define FUSE_USE_VERSION 26
+#define FUSE_USE_VERSION 29
 
 #include <dlfcn.h>
 #include <errno.h>

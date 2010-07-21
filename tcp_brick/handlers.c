@@ -4,7 +4,7 @@
  * found in the TCP brick server documentation.
  */
 
-#define FUSE_USE_VERSION 26
+#define FUSE_USE_VERSION 29
 
 #include "tcp_brick/handlers.h"
 
@@ -375,9 +375,42 @@ kenny_truncate(const char *path, off_t offset)
     if (operbuf == NULL) {
         KFS_RETURN(-ENOMEM);
     }
-    memcpy(operbuf + 6, &offset_serialised, 4);
+    memcpy(operbuf + 6, &offset_serialised, 8);
     memcpy(operbuf + 14, path, pathlen);
-    ret = do_operation_wrapper(KFS_OPID_CHOWN, operbuf, pathlen + 8, NULL, 0);
+    ret = do_operation_wrapper(KFS_OPID_TRUNCATE, operbuf, pathlen + 8, NULL,
+            0);
+    operbuf = KFS_FREE(operbuf);
+
+    KFS_RETURN(ret);
+}
+
+static int
+kenny_open(const char *path, struct fuse_file_info *ffi)
+{
+    void * const resbuf = &(ffi->fh);
+    char *operbuf = NULL;
+    int ret = 0;
+    uint32_t flags_serialised = 0;
+    uint8_t fuse_flags = 0;
+    size_t pathlen = 0;
+
+    KFS_ENTER();
+
+    pathlen = strlen(path);
+    operbuf = KFS_MALLOC(pathlen + 5 + 6);
+    if (operbuf == NULL) {
+        KFS_RETURN(-ENOMEM);
+    }
+    flags_serialised = htonl(ffi->flags);
+    fuse_flags = (ffi->direct_io << 0) | (ffi->keep_cache << 1);
+#if FUSE_VERSION >= 29
+    fuse_flags |= ffi->nonseekable << 2;
+#endif
+    memcpy(operbuf + 6, &flags_serialised, 4);
+    operbuf[10] = fuse_flags;
+    memcpy(operbuf + 11, path, pathlen);
+    KFS_ASSERT(sizeof(ffi->fh) == 8);
+    ret = do_operation_wrapper(KFS_OPID_OPEN, operbuf, pathlen + 5, resbuf, 8);
     operbuf = KFS_FREE(operbuf);
 
     KFS_RETURN(ret);
@@ -396,6 +429,7 @@ static const struct fuse_operations handlers = {
     .chmod = kenny_chmod,
     .chown = kenny_chown,
     .truncate = kenny_truncate,
+    .open = kenny_open,
 };
 
 const struct fuse_operations *

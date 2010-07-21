@@ -322,7 +322,9 @@ do_operation(const char *operbuf, size_t operbufsize,
             result_size = ntohl(result_size);
             if (result_size > resbufsize) {
                 /* Result is too big for given buffer. */
-                KFS_ERROR("Reply from server is too large for buffer.");
+                KFS_WARNING("Reply from server (%u bytes) is too large for "
+                            "buffer (%lu bytes).", result_size,
+                            (unsigned long) resbufsize);
                 KFS_RETURN(-1);
             }
             /* Backend operation also succeeded: retrieve the body (if any). */

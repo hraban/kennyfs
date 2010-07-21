@@ -3,7 +3,7 @@
  * directory.
  */
 
-#define FUSE_USE_VERSION 26
+#define FUSE_USE_VERSION 29
 /* Macro is necessary to get fstatat(). */
 #define _ATFILE_SOURCE
 /* Macro is necessary to get pread(). */
