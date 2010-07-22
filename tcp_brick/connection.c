@@ -85,7 +85,6 @@ kfs_send(int sockfd, const char *buf, size_t buflen)
         KFS_ASSERT(done <= buflen);
     }
 
-    /* Control never reaches this point. */
     KFS_RETURN(0);
 }
 

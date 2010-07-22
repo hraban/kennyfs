@@ -610,6 +610,159 @@ handle_read(client_t c, const char *rawop, size_t opsize)
 }
 
 /**
+ * Handle a write operation. The argument message is built up as follows:
+ *
+ * - filehandle (8 bytes).
+ * - offset in the file (8 bytes, network order).
+ * - data to write.
+ *
+ * The number of bytes to write is deducted from the total length of the
+ * message.  The return message is empty.
+ */
+static int
+handle_write(client_t c, const char *rawop, size_t opsize)
+{
+    char resultbuf[8];
+    struct fuse_file_info ffi;
+    uint64_t offset = 0;
+    int ret = 0;
+    size_t writelen = 0;
+
+    KFS_ENTER();
+
+    if (oper->write == NULL) {
+        ret = -ENOSYS;
+    } else {
+        memset(&ffi, 0, sizeof(ffi));
+        memcpy(&ffi.fh, rawop, 8);
+        writelen = opsize - 20;
+        memcpy(&offset, rawop + 8, 8);
+        offset = ntohll(offset);
+        if (resultbuf == NULL) {
+            ret = -ENOBUFS;
+        } else {
+            ret = oper->write(NULL, rawop + 16, writelen, offset, &ffi);
+        }
+    }
+    ret = send_reply(c, ret, resultbuf, 0);
+
+    KFS_RETURN(0);
+}
+
+/**
+ * Handle a release operation. The argument message consists of the 8 byte
+ * filehandle. The return message is empty.
+ */
+static int
+handle_release(client_t c, const char *rawop, size_t opsize)
+{
+    char resultbuf[8];
+    struct fuse_file_info ffi;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    if (opsize != 8) {
+        report_invalid(c);
+        KFS_RETURN(-1);
+    }
+    if (oper->release == NULL) {
+        ret = -ENOSYS;
+    } else {
+        memcpy(&ffi.fh, rawop, 8);
+        ret = oper->release(NULL, &ffi);
+    }
+    ret = send_reply(c, ret, resultbuf, 0);
+
+    KFS_RETURN(0);
+}
+
+/**
+ * Handle a fsync operation. The argument message consists of the 8 byte
+ * filehandle, followed by a one-byte flag for the "datasync" parameter. The
+ * return message is empty.
+ */
+static int
+handle_fsync(client_t c, const char *rawop, size_t opsize)
+{
+    char resultbuf[9];
+    struct fuse_file_info ffi;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    if (opsize != 9) {
+        report_invalid(c);
+        KFS_RETURN(-1);
+    }
+    if (oper->fsync == NULL) {
+        ret = -ENOSYS;
+    } else {
+        memcpy(&ffi.fh, rawop, 8);
+        ret = oper->fsync(NULL, rawop[8], &ffi);
+    }
+    ret = send_reply(c, ret, resultbuf, 0);
+
+    KFS_RETURN(0);
+}
+
+/**
+ * Handle a opendir operation. The argument message is the pathname of the
+ * directory. The return message is the filehandle that must be supplied with
+ * every subsequent operation on this directory (8 bytes).
+ */
+static int
+handle_opendir(client_t c, const char *rawop, size_t opsize)
+{
+    (void) opsize;
+
+    char resultbuf[16];
+    struct fuse_file_info ffi;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    if (oper->opendir == NULL) {
+        ret = -ENOSYS;
+    } else {
+        memcpy(&ffi.fh, rawop, 8);
+        ret = oper->opendir(rawop, &ffi);
+    }
+    memcpy(resultbuf + 8, &ffi.fh, 8);
+    ret = send_reply(c, ret, resultbuf, 8);
+
+    KFS_RETURN(0);
+}
+
+/**
+ * Handle a releasedir operation. The argument message consists of the 8 byte
+ * filehandle. The return message is empty.
+ */
+static int
+handle_releasedir(client_t c, const char *rawop, size_t opsize)
+{
+    char resultbuf[8];
+    struct fuse_file_info ffi;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    if (opsize != 8) {
+        report_invalid(c);
+        KFS_RETURN(-1);
+    }
+    if (oper->releasedir == NULL) {
+        ret = -ENOSYS;
+    } else {
+        memcpy(&ffi.fh, rawop, 8);
+        ret = oper->releasedir(NULL, &ffi);
+    }
+    ret = send_reply(c, ret, resultbuf, 0);
+
+    KFS_RETURN(0);
+}
+
+/**
  * Handles a QUIT message.
  */
 static int
@@ -649,6 +802,14 @@ static const handler_t handlers[KFS_OPID_MAX_] = {
     [KFS_OPID_TRUNCATE] = handle_truncate,
     [KFS_OPID_OPEN] = handle_open,
     [KFS_OPID_READ] = handle_read,
+    [KFS_OPID_WRITE] = handle_write,
+    [KFS_OPID_STATFS] = NULL,
+    [KFS_OPID_FLUSH] = NULL, /* TODO: Check if this needs a handler. */
+    [KFS_OPID_RELEASE] = handle_release,
+    [KFS_OPID_FSYNC] = handle_fsync,
+    [KFS_OPID_OPENDIR] = handle_opendir,
+    [KFS_OPID_READDIR] = NULL,
+    [KFS_OPID_RELEASEDIR] = handle_releasedir,
     [KFS_OPID_QUIT] = handle_quit,
 };
 

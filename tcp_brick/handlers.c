@@ -149,7 +149,7 @@ kenny_mknod(const char *path, mode_t mode, dev_t dev)
     }
     memcpy(operbuf + 6, &mode_serialised, 4);
     memcpy(operbuf + 10, path, pathlen);
-    ret = do_operation_wrapper(KFS_OPID_MKDIR, operbuf, pathlen + 4, NULL, 0);
+    ret = do_operation_wrapper(KFS_OPID_MKNOD, operbuf, pathlen + 4, NULL, 0);
     operbuf = KFS_FREE(operbuf);
 
     KFS_RETURN(ret);
@@ -448,6 +448,90 @@ kenny_read(const char *path, char *buf, size_t nbyte, off_t offset, struct
     KFS_RETURN(ret);
 }
 
+static int
+kenny_write(const char *path, const char *buf, size_t nbyte, off_t offset,
+        struct fuse_file_info *ffi)
+{
+    (void) path;
+
+    uint64_t val64 = 0;
+    char *operbuf = NULL;
+    const size_t bodylen = 8 + 8 + nbyte;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    operbuf = KFS_MALLOC(bodylen + 6);
+    if (operbuf == NULL) {
+        KFS_RETURN(-ENOMEM);
+    }
+    /* The file handle. */
+    memcpy(operbuf + 6, &ffi->fh, 8);
+    /* The offset in the file. */
+    val64 = htonll(offset);
+    memcpy(operbuf + 14, &val64, 8);
+    memcpy(operbuf + 22, buf, nbyte);
+    ret = do_operation_wrapper(KFS_OPID_WRITE, operbuf, bodylen, NULL, 0);
+
+    KFS_RETURN(ret);
+}
+
+static int
+kenny_release(const char *path, struct fuse_file_info *ffi)
+{
+    (void) path;
+
+    char operbuf[8 + 6];
+    int ret = 0;
+
+    KFS_ENTER();
+
+    /* The file handle. */
+    memcpy(operbuf + 6, &ffi->fh, 8);
+    ret = do_operation_wrapper(KFS_OPID_RELEASE, operbuf, 8, NULL, 0);
+
+    KFS_RETURN(ret);
+}
+
+static int
+kenny_opendir(const char *path, struct fuse_file_info *ffi)
+{
+    void * const fh = &ffi->fh;
+    char *operbuf = NULL;
+    size_t pathlen = 0;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    pathlen = strlen(path);
+    operbuf = KFS_MALLOC(pathlen + 6);
+    if (operbuf == NULL) {
+        KFS_RETURN(-ENOMEM);
+    }
+    memcpy(operbuf + 6, path, pathlen);
+    ret = do_operation_wrapper(KFS_OPID_OPENDIR, operbuf, pathlen, fh, 8);
+    operbuf = KFS_FREE(operbuf);
+
+    KFS_RETURN(ret);
+}
+
+static int
+kenny_releasedir(const char *path, struct fuse_file_info *ffi)
+{
+    (void) path;
+
+    char operbuf[8 + 6];
+    int ret = 0;
+
+    KFS_ENTER();
+
+    /* The file handle. */
+    memcpy(operbuf + 6, &ffi->fh, 8);
+    ret = do_operation_wrapper(KFS_OPID_RELEASEDIR, operbuf, 8, NULL, 0);
+
+    KFS_RETURN(ret);
+}
+
 static const struct fuse_operations handlers = {
     .getattr = kenny_getattr,
     .readlink = kenny_readlink,
@@ -463,6 +547,12 @@ static const struct fuse_operations handlers = {
     .truncate = kenny_truncate,
     .open = kenny_open,
     .read = kenny_read,
+    .write = kenny_write,
+    .statfs = NULL,
+    .flush = NULL,
+    .release = kenny_release,
+    .opendir = kenny_opendir,
+    .releasedir = kenny_releasedir,
 };
 
 const struct fuse_operations *
