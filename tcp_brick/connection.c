@@ -286,17 +286,18 @@ refresh_socket(int sockfd, unsigned int *retries,
 
 /**
  * Send given operation to the server and wait for its reply. Returns -1 on
- * unrecoverable failure, otherwise returns whatever came in through the network
- * as the return value (sent by the server). Note that if a non-zero return
- * value comes in from the server (i.e.: failure of its backend), the result
- * buffer is ignored and that value is returned immediately. On success,
- * however, this function blocks until the entire result is in.
+ * unrecoverable failure, otherwise returns 0. The return value coming in from
+ * the server is stored in the location pointed to by `serverret'.  Note that if
+ * a negative return value comes in from the server (i.e.: failure of its
+ * backend), the result buffer is ignored and that value is returned
+ * immediately. On success, however, this function blocks until the entire
+ * result is in.
  */
 int
 do_operation(const char *operbuf, size_t operbufsize,
-             char *resbuf, size_t resbufsize)
+             char *resbuf, size_t resbufsize, int *serverret)
 {
-    char retvalbuf[8];
+    char headerbuf[8];
     uint32_t retval = 0;
     uint32_t result_size = 0;
     int sockfd = 0;
@@ -306,19 +307,20 @@ do_operation(const char *operbuf, size_t operbufsize,
     KFS_ENTER();
 
     KFS_ASSERT((resbuf == NULL) == (resbufsize == 0));
-    KFS_ASSERT(operbuf != NULL);
+    KFS_ASSERT(operbuf != NULL && serverret != NULL);
     retries = MAX_RETRIES;
     for (;;) {
-        ret = kfs_sendrecv(cached_sockfd, operbuf, operbufsize, retvalbuf, 8);
+        ret = kfs_sendrecv(cached_sockfd, operbuf, operbufsize, headerbuf, 8);
         if (ret == 0) {
             /* Network operation was a success. */
-            memcpy(&retval, retvalbuf, 4);
+            memcpy(&retval, headerbuf, 4);
             retval = ntohl(retval);
-            if (retval != 0) {
-                /* The backend of the server failed: return its error code. */
-                KFS_RETURN(retval);
+            *serverret = retval - (1 << 31);
+            if (*serverret < 0) {
+                /* The backend of the server failed: exit immediately. */
+                KFS_RETURN(0);
             }
-            memcpy(&result_size, retvalbuf + 4, 4);
+            memcpy(&result_size, headerbuf + 4, 4);
             result_size = ntohl(result_size);
             if (result_size > resbufsize) {
                 /* Result is too big for given buffer. */

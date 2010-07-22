@@ -27,14 +27,17 @@
  * meaning that the buffer is in fact 6 bytes bigger than `size'.  This wrapper
  * will fill in the first six bytes as per the protocol. The return buffers are
  * handled just as by do_operation(). On failure by the client (i.e.: by
- * do_operation) -EREMOTEIO is returned, otherwise the negated value of whatever
- * return value is sent back by the server is returned.
+ * do_operation) -EREMOTEIO is returned, otherwise any return value received
+ * from the server is directly returned. This means that it is impossible to
+ * distinguish between a local and a remote EREMOTEIO, except by having a look
+ * at the logs.
  */
 static int
 do_operation_wrapper(enum fuse_op_id id, char *operbuf, size_t size,
                      char *resbuf, size_t resbuflen)
 {
     int ret = 0;
+    int serverret = 0;
     uint32_t size_serialised = 0;
     uint16_t id_serialised = 0;
 
@@ -44,17 +47,17 @@ do_operation_wrapper(enum fuse_op_id id, char *operbuf, size_t size,
     id_serialised = htons(id);
     memcpy(operbuf, &size_serialised, 4);
     memcpy(operbuf + 4, &id_serialised, 2);
-    ret = do_operation(operbuf, size + 6, resbuf, resbuflen);
-    KFS_ASSERT(ret >= -1);
+    ret = do_operation(operbuf, size + 6, resbuf, resbuflen, &serverret);
     if (ret == -1) {
+        /* Client side failure. */
         KFS_RETURN(-EREMOTEIO);
-    } else if (ret != 0) {
-        KFS_ERROR("Remote side responded with error %d: %s.", ret,
-                strerror(ret));
-        KFS_RETURN(-ret);
+    }
+    if (serverret < 0) {
+        KFS_INFO("Remote side responded with error %d: %s.", serverret,
+                strerror(-serverret));
     }
 
-    KFS_RETURN(0);
+    KFS_RETURN(serverret);
 }
 
 static int
@@ -387,11 +390,10 @@ kenny_truncate(const char *path, off_t offset)
 static int
 kenny_open(const char *path, struct fuse_file_info *ffi)
 {
-    void * const resbuf = &(ffi->fh);
+    char resbuf[9];
     char *operbuf = NULL;
     int ret = 0;
     uint32_t flags_serialised = 0;
-    uint8_t fuse_flags = 0;
     size_t pathlen = 0;
 
     KFS_ENTER();
@@ -402,16 +404,20 @@ kenny_open(const char *path, struct fuse_file_info *ffi)
         KFS_RETURN(-ENOMEM);
     }
     flags_serialised = htonl(ffi->flags);
-    fuse_flags = (ffi->direct_io << 0) | (ffi->keep_cache << 1);
-#if FUSE_VERSION >= 29
-    fuse_flags |= ffi->nonseekable << 2;
-#endif
     memcpy(operbuf + 6, &flags_serialised, 4);
-    operbuf[10] = fuse_flags;
-    memcpy(operbuf + 11, path, pathlen);
-    KFS_ASSERT(sizeof(ffi->fh) == 8);
-    ret = do_operation_wrapper(KFS_OPID_OPEN, operbuf, pathlen + 5, resbuf, 8);
+    memcpy(operbuf + 10, path, pathlen);
+    ret = do_operation_wrapper(KFS_OPID_OPEN, operbuf, pathlen + 5, resbuf,
+            sizeof(resbuf));
     operbuf = KFS_FREE(operbuf);
+    if (ret == 0) {
+        KFS_ASSERT(sizeof(ffi->fh) == 8);
+        memcpy(&(ffi->fh), resbuf, 8);
+        ffi->direct_io = (resbuf[9] << 0) & 1;
+        ffi->keep_cache = (resbuf[9] << 1) & 1;
+#if FUSE_VERSION >= 29
+        ffi->nonseekable = (resbuf[9] << 2) & 1;
+#endif
+    }
 
     KFS_RETURN(ret);
 }
@@ -431,12 +437,12 @@ kenny_read(const char *path, char *buf, size_t nbyte, off_t offset, struct
 
     /* The file handle. */
     memcpy(operbuf + 6, &ffi->fh, 8);
-    /* The offset in the file. */
-    val64 = htonll(offset);
-    memcpy(operbuf + 14, &val64, 8);
     /* The number of bytes to read. */
     val32 = htonl(nbyte);
-    memcpy(operbuf + 22, &val32, 4);
+    memcpy(operbuf + 14, &val32, 4);
+    /* The offset in the file. */
+    val64 = htonll(offset);
+    memcpy(operbuf + 18, &val64, 8);
     ret = do_operation_wrapper(KFS_OPID_READ, operbuf, 20, buf, nbyte);
 
     KFS_RETURN(ret);

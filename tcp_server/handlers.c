@@ -28,6 +28,59 @@
 static const struct fuse_operations *oper = NULL;
 
 /**
+ * Send a reply to given client. The return value is serialised according to the
+ * protocol and the size of the reply is embedded in the header as well. The
+ * buffer should be able to contain the entire message, header and body, and the
+ * body should be filled out completely already. Because the header is 8 bytes
+ * long, the buffer must be of a size at least 8 bytes larger than the indicated
+ * size of the body, and the body must start at an offset of 8 bytes, not at 0.
+ *
+ * It would be prettier to just accept a buffer for the body and allocate memory
+ * for a fresh new buffer, fill that with the necessary data and not have the
+ * caller worry about the size of the header, but that would require a new
+ * malloc for every reply, which I try to avoid.
+ *
+ * Returns -1 on failure, 0 on succesful sending.
+ */
+static int
+send_reply(client_t c, int returnvalue, char *buf, size_t bodysize)
+{
+    uint32_t val32 = 0;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    /* This assertion can not be checked by the compiler but it must hold. */
+    // KFS_ASSERT(NUMELEM(buf) >= bodysize + 8);
+    /* Return value. */
+    val32 = htonl(returnvalue + (1 << 31));
+    memcpy(buf, &val32, 4);
+    /* Size of the body. */
+    val32 = htonl(bodysize);
+    memcpy(buf + 4, &val32, 4);
+    ret = send_msg(c, buf, bodysize + 8);
+
+    KFS_RETURN(ret);
+}
+
+/**
+ * Indicates to the client that the operation it sent was invalid / corrupt.
+ */
+static int
+report_invalid(client_t c)
+{
+    char resultbuf[8];
+    int ret = 0;
+
+    KFS_ENTER();
+
+    KFS_INFO("Received invalid / corrupt request from client.");
+    ret = send_reply(c, -EINVAL, resultbuf, 0);
+
+    KFS_RETURN(ret);
+}
+
+/**
  * Handle a getattr operation. The argument message is the raw pathname. The
  * return message is a struct stat serialised as 13 htonl()'ed uint32_t's. The
  * elements are ordered as follows:
@@ -56,7 +109,7 @@ handle_getattr(client_t c, const char *rawop, size_t opsize)
 
     uint32_t intbuf[13];
     char resbuf[8 + sizeof(intbuf)];
-    uint32_t val = 0;
+    size_t bodysize = 0;
     int ret = 0;
     struct stat stbuf;
 
@@ -69,9 +122,6 @@ handle_getattr(client_t c, const char *rawop, size_t opsize)
         ret = oper->getattr(rawop, &stbuf);
     }
     KFS_ASSERT(ret <= 0);
-    /* Send the absolute value over the wire. */
-    val = htonl(-ret);
-    memcpy(resbuf, &val, 4);
     if (ret == 0) {
         /* Call succeeded, also send the body. */
         intbuf[0] = htonl(stbuf.st_dev);
@@ -87,16 +137,13 @@ handle_getattr(client_t c, const char *rawop, size_t opsize)
         intbuf[10] = htonl(stbuf.st_atime);
         intbuf[11] = htonl(stbuf.st_mtime);
         intbuf[12] = htonl(stbuf.st_ctime);
-        val = htonl(sizeof(intbuf));
-        memcpy(resbuf + 4, &val, 4);
-        memcpy(resbuf + 8, intbuf, sizeof(intbuf));
-        ret = send_msg(c, resbuf, sizeof(resbuf));
+        bodysize = sizeof(intbuf);
+        memcpy(resbuf + 8, intbuf, bodysize);
     } else {
         /* Call failed, return only the error code. */
-        val = htonl(0);
-        memcpy(resbuf + 4, &val, 4);
-        ret = send_msg(c, resbuf, 8);
+        bodysize = 0;
     }
+    ret = send_reply(c, ret, resbuf, bodysize);
 
     KFS_RETURN(ret);
 }
@@ -110,9 +157,8 @@ handle_readlink(client_t c, const char *rawop, size_t opsize)
 {
     (void) opsize;
 
-    uint32_t val = 0;
     int ret = 0;
-    size_t len = 0;
+    size_t bodysize = 0;
     char resultbuf[PATHBUF_SIZE + 8];
 
     KFS_ENTER();
@@ -123,18 +169,12 @@ handle_readlink(client_t c, const char *rawop, size_t opsize)
         ret = oper->readlink(rawop, resultbuf + 8, sizeof(resultbuf) - 8);
     }
     KFS_ASSERT(ret <= 0);
-    val = htonl(-ret);
-    memcpy(resultbuf, &val, 4);
     if (ret == 0) {
-        len = strlen(resultbuf + 8);
-        val = htonl(len);
-        memcpy(resultbuf + 4, &val, 4);
-        ret = send_msg(c, resultbuf, len + 8);
+        bodysize = strlen(resultbuf + 8);
     } else {
-        val = htonl(0);
-        memcpy(resultbuf + 4, &val, 4);
-        ret = send_msg(c, resultbuf, 8);
+        bodysize = 0;
     }
+    ret = send_reply(c, ret, resultbuf, bodysize);
 
     KFS_RETURN(ret);
 }
@@ -152,7 +192,6 @@ handle_mknod(client_t c, const char *rawop, size_t opsize)
 
     char resultbuf[8];
     uint32_t mode_serialised = 0;
-    uint32_t val = 0;
     mode_t mode;
     int ret = 0;
 
@@ -167,11 +206,7 @@ handle_mknod(client_t c, const char *rawop, size_t opsize)
         ret = oper->mknod(rawop + 4, mode, 0);
     }
     KFS_ASSERT(ret <= 0);
-    val = htonl(-ret);
-    memcpy(resultbuf, &val, 4);
-    val = htonl(0);
-    memcpy(resultbuf + 4, &val, 4);
-    ret = send_msg(c, resultbuf, 8);
+    ret = send_reply(c, ret, resultbuf, 0);
 
     KFS_RETURN(ret);
 }
@@ -188,7 +223,6 @@ handle_mkdir(client_t c, const char *rawop, size_t opsize)
 
     char resultbuf[8];
     uint32_t mode_serialised = 0;
-    uint32_t val = 0;
     mode_t mode;
     int ret = 0;
 
@@ -203,11 +237,7 @@ handle_mkdir(client_t c, const char *rawop, size_t opsize)
         ret = oper->mkdir(rawop + 4, mode);
     }
     KFS_ASSERT(ret <= 0);
-    val = htonl(-ret);
-    memcpy(resultbuf, &val, 4);
-    val = htonl(0);
-    memcpy(resultbuf + 4, &val, 4);
-    ret = send_msg(c, resultbuf, 8);
+    ret = send_reply(c, ret, resultbuf, 0);
 
     KFS_RETURN(ret);
 }
@@ -222,7 +252,6 @@ handle_unlink(client_t c, const char *rawop, size_t opsize)
     (void) opsize;
 
     char resultbuf[8];
-    uint32_t val = 0;
     int ret = 0;
 
     KFS_ENTER();
@@ -233,11 +262,7 @@ handle_unlink(client_t c, const char *rawop, size_t opsize)
         ret = oper->unlink(rawop);
     }
     KFS_ASSERT(ret <= 0);
-    val = htonl(-ret);
-    memcpy(resultbuf, &val, 4);
-    val = htonl(0);
-    memcpy(resultbuf + 4, &val, 4);
-    ret = send_msg(c, resultbuf, 8);
+    ret = send_reply(c, ret, resultbuf, 0);
 
     KFS_RETURN(ret);
 }
@@ -252,7 +277,6 @@ handle_rmdir(client_t c, const char *rawop, size_t opsize)
     (void) opsize;
 
     char resultbuf[8];
-    uint32_t val = 0;
     int ret = 0;
 
     KFS_ENTER();
@@ -263,11 +287,7 @@ handle_rmdir(client_t c, const char *rawop, size_t opsize)
         ret = oper->rmdir(rawop);
     }
     KFS_ASSERT(ret <= 0);
-    val = htonl(-ret);
-    memcpy(resultbuf, &val, 4);
-    val = htonl(0);
-    memcpy(resultbuf + 4, &val, 4);
-    ret = send_msg(c, resultbuf, 8);
+    ret = send_reply(c, ret, resultbuf, 0);
 
     KFS_RETURN(ret);
 }
@@ -284,44 +304,31 @@ handle_symlink(client_t c, const char *rawop, size_t opsize)
     (void) opsize;
 
     char resultbuf[8];
-    uint32_t val = 0;
     uint32_t path1len = 0;
     const char *path1 = NULL;
     const char *path2 = NULL;
-    int ret2client = 0;
-    int ret2server = 0;
-    int temp = 0;
+    int ret = 0;
 
     KFS_ENTER();
 
-    ret2server = 0;
     if (oper->symlink == NULL) {
-        ret2client = -ENOSYS;
+        ret = -ENOSYS;
     } else {
         memcpy(&path1len, rawop, 4);
         path1len = ntohl(path1len);
         /* Check that the paths are separated by a '\0'-byte. */
         if (rawop[4 + path1len] != '\0') {
-            ret2client = -EINVAL;
-            /* Corrupt argument. */
-            ret2server = -1;
-        } else {
-            path1 = rawop + 4;
-            path2 = rawop + 4 + path1len + 1;
-            ret2client = oper->symlink(path1, path2);
+            report_invalid(c);
+            KFS_RETURN(-1);
         }
+        path1 = rawop + 4;
+        path2 = rawop + 4 + path1len + 1;
+        ret = oper->symlink(path1, path2);
     }
-    KFS_ASSERT(ret2client <= 0);
-    val = htonl(-ret2client);
-    memcpy(resultbuf, &val, 4);
-    val = htonl(0);
-    memcpy(resultbuf + 4, &val, 4);
-    temp = send_msg(c, resultbuf, 8);
-    if (ret2server == 0) {
-        ret2server = temp;
-    }
+    KFS_ASSERT(ret <= 0);
+    ret = send_reply(c, ret, resultbuf, 0);
 
-    KFS_RETURN(ret2server);
+    KFS_RETURN(ret);
 }
 
 /**
@@ -335,44 +342,31 @@ handle_rename(client_t c, const char *rawop, size_t opsize)
     (void) opsize;
 
     char resultbuf[8];
-    uint32_t val = 0;
     uint32_t path1len = 0;
     const char *path1 = NULL;
     const char *path2 = NULL;
-    int ret2client = 0;
-    int ret2server = 0;
-    int temp = 0;
+    int ret = 0;
 
     KFS_ENTER();
 
-    ret2server = 0;
     if (oper->rename == NULL) {
-        ret2client = -ENOSYS;
+        ret = -ENOSYS;
     } else {
         memcpy(&path1len, rawop, 4);
         path1len = ntohl(path1len);
         /* Check that the paths are separated by a '\0'-byte. */
         if (rawop[4 + path1len] != '\0') {
-            ret2client = -EINVAL;
-            /* Corrupt argument. */
-            ret2server = -1;
-        } else {
-            path1 = rawop + 4;
-            path2 = rawop + 4 + path1len + 1;
-            ret2client = oper->rename(path1, path2);
+            report_invalid(c);
+            KFS_RETURN(-1);
         }
+        path1 = rawop + 4;
+        path2 = rawop + 4 + path1len + 1;
+        ret = oper->rename(path1, path2);
     }
-    KFS_ASSERT(ret2client <= 0);
-    val = htonl(-ret2client);
-    memcpy(resultbuf, &val, 4);
-    val = htonl(0);
-    memcpy(resultbuf + 4, &val, 4);
-    temp = send_msg(c, resultbuf, 8);
-    if (ret2server == 0) {
-        ret2server = temp;
-    }
+    KFS_ASSERT(ret <= 0);
+    ret = send_reply(c, ret, resultbuf, 0);
 
-    KFS_RETURN(ret2server);
+    KFS_RETURN(ret);
 }
 
 /**
@@ -386,44 +380,31 @@ handle_link(client_t c, const char *rawop, size_t opsize)
     (void) opsize;
 
     char resultbuf[8];
-    uint32_t val = 0;
     uint32_t path1len = 0;
     const char *path1 = NULL;
     const char *path2 = NULL;
-    int ret2client = 0;
-    int ret2server = 0;
-    int temp = 0;
+    int ret = 0;
 
     KFS_ENTER();
 
-    ret2server = 0;
     if (oper->link == NULL) {
-        ret2client = -ENOSYS;
+        ret = -ENOSYS;
     } else {
         memcpy(&path1len, rawop, 4);
         path1len = ntohl(path1len);
         /* Check that the paths are separated by a '\0'-byte. */
         if (rawop[4 + path1len] != '\0') {
-            ret2client = -EINVAL;
-            /* Corrupt argument. */
-            ret2server = -1;
-        } else {
-            path1 = rawop + 4;
-            path2 = rawop + 4 + path1len + 1;
-            ret2client = oper->link(path1, path2);
+            report_invalid(c);
+            KFS_RETURN(-1);
         }
+        path1 = rawop + 4;
+        path2 = rawop + 4 + path1len + 1;
+        ret = oper->link(path1, path2);
     }
-    KFS_ASSERT(ret2client <= 0);
-    val = htonl(-ret2client);
-    memcpy(resultbuf, &val, 4);
-    val = htonl(0);
-    memcpy(resultbuf + 4, &val, 4);
-    temp = send_msg(c, resultbuf, 8);
-    if (ret2server == 0) {
-        ret2server = temp;
-    }
+    KFS_ASSERT(ret <= 0);
+    ret = send_reply(c, ret, resultbuf, 0);
 
-    KFS_RETURN(ret2server);
+    KFS_RETURN(ret);
 }
 
 /**
@@ -438,7 +419,6 @@ handle_chmod(client_t c, const char *rawop, size_t opsize)
 
     char resultbuf[8];
     uint32_t mode_serialised = 0;
-    uint32_t val = 0;
     mode_t mode;
     int ret = 0;
 
@@ -453,11 +433,7 @@ handle_chmod(client_t c, const char *rawop, size_t opsize)
         ret = oper->chmod(rawop + 4, mode);
     }
     KFS_ASSERT(ret <= 0);
-    val = htonl(-ret);
-    memcpy(resultbuf, &val, 4);
-    val = htonl(0);
-    memcpy(resultbuf + 4, &val, 4);
-    ret = send_msg(c, resultbuf, 8);
+    ret = send_reply(c, ret, resultbuf, 0);
 
     KFS_RETURN(ret);
 }
@@ -476,7 +452,6 @@ handle_chown(client_t c, const char *rawop, size_t opsize)
     char resultbuf[8];
     uint32_t uid_serialised = 0;
     uint32_t gid_serialised = 0;
-    uint32_t val = 0;
     uid_t uid = 0;
     gid_t gid = 0;
     int ret = 0;
@@ -495,11 +470,7 @@ handle_chown(client_t c, const char *rawop, size_t opsize)
         ret = oper->chown(rawop + 8, uid, gid);
     }
     KFS_ASSERT(ret <= 0);
-    val = htonl(-ret);
-    memcpy(resultbuf, &val, 4);
-    val = htonl(0);
-    memcpy(resultbuf + 4, &val, 4);
-    ret = send_msg(c, resultbuf, 8);
+    ret = send_reply(c, ret, resultbuf, 0);
 
     KFS_RETURN(ret);
 }
@@ -516,7 +487,6 @@ handle_truncate(client_t c, const char *rawop, size_t opsize)
 
     char resultbuf[8];
     uint64_t offset_serialised = 0;
-    uint32_t val = 0;
     off_t offset = 0;
     int ret = 0;
 
@@ -531,31 +501,21 @@ handle_truncate(client_t c, const char *rawop, size_t opsize)
         ret = oper->truncate(rawop + 8, offset);
     }
     KFS_ASSERT(ret <= 0);
-    val = htonl(-ret);
-    memcpy(resultbuf, &val, 4);
-    val = htonl(0);
-    memcpy(resultbuf + 4, &val, 4);
-    ret = send_msg(c, resultbuf, 8);
+    ret = send_reply(c, ret, resultbuf, 0);
 
     KFS_RETURN(ret);
 }
 
 /**
- * Handle an open operation. The argument message consists of a serialized
- * fuse_file_info struct followed by the pathname. The struct is serialized as
- * follows:
- *
- * - 4 bytes: open flags, cast to uint32_t, in network order.
- * - 1 byte: fuse flags, a bitmask of the following flags (from lsb to msb):
- *   direct_io, keep_cache, nonseekable.
+ * Handle an open operation. The argument message consists of argument flags
+ * (serialised as a uint32_t, network order) followed by the pathname.
  *
  * The return message is an 8-byte character array that will be used to uniquely
  * identify this file in further operations (a file handler). It is, in fact,
- * the fh element, but that is an implementation detail.
- *
- * If the FUSE library installed on the server has a version lower than 2.9 the
- * nonseekable flag is not supported: an operation with that flag set will
- * result in a ENOTSUP error being sent back to the client.
+ * the fh element, but that is an implementation detail. This 8-byte identifier
+ * is followed by three flags, stored in one byte (total response: 9 bytes),
+ * from lsb to msb: direct_io (0), keep_cache (1), nonseekable (2, only if FUSE
+ * API version >= 2.9).
  *
  * TODO: The flags element is an int in the original struct, which is larger
  * than a uint32_t on some architectures. Can that become a problem?
@@ -566,11 +526,10 @@ handle_open(client_t c, const char *rawop, size_t opsize)
     (void) opsize;
 
     struct fuse_file_info ffi;
-    char resultbuf[16];
-    size_t resultbuflen = 0;
+    char resultbuf[17];
+    size_t bodysize = 0;
     int ret = 0;
     uint32_t val32 = 0;
-    uint8_t val8 = 0;
 
     KFS_ENTER();
 
@@ -579,35 +538,22 @@ handle_open(client_t c, const char *rawop, size_t opsize)
     } else {
         memset(&ffi, 0, sizeof(ffi));
         memcpy(&val32, rawop, 4);
-        memcpy(&val8, rawop + 4, 1);
         ffi.flags = ntohl(val32);
-        ffi.direct_io = (val8 >> 0) & 1;
-        ffi.keep_cache = (val8 >> 1) & 1;
-#if FUSE_VERSION >= 29
-        ffi.nonseekable = (val8 >> 2) & 1;
-#else
-        if ((val8 >> 2) & 1) {
-            KFS_INFO("Flag 'nonseekable' set during open request, not supported"
-                     " by this server's FUSE library. Please upgrade to >=2.9");
-            ret = -ENOTSUP;
-        } else
-#endif
-        ret = oper->open(rawop + 5, &ffi);
+        ret = oper->open(rawop + 4, &ffi);
     }
     KFS_ASSERT(ret <= 0);
-    val32 = htonl(-ret);
-    memcpy(resultbuf, &val32, 4);
     if (ret == 0) {
         /* Success: send back the (raw) filehandle. */
-        resultbuflen = 16;
+        bodysize = 9;
         memcpy(resultbuf + 8, &ffi.fh, 8);
+        resultbuf[16] = (ffi.direct_io << 0) | (ffi.keep_cache << 1);
+#if FUSE_VERSION >= 29
+        resultbuf[16] |= ffi.non_seekable << 2;
+#endif
     } else {
-        resultbuflen = 8;
+        bodysize = 0;
     }
-    /* The length of the result body. */
-    val32 = htonl(resultbuflen - 8);
-    memcpy(resultbuf + 4, &val32, 4);
-    ret = send_msg(c, resultbuf, resultbuflen);
+    ret = send_reply(c, ret, resultbuf, bodysize);
 
     KFS_RETURN(ret);
 }
@@ -642,7 +588,7 @@ handle_read(client_t c, const char *rawop, size_t opsize)
         memcpy(&ffi.fh, rawop, 8);
         memcpy(&val32, rawop + 8, 4);
         len = ntohl(val32);
-        memcpy(&offset, rawop + 12, 1);
+        memcpy(&offset, rawop + 12, 8);
         offset = ntohll(offset);
         resultbuf = KFS_MALLOC(len + 8);
         if (resultbuf == NULL) {
@@ -651,20 +597,14 @@ handle_read(client_t c, const char *rawop, size_t opsize)
             ret = oper->read(NULL, resultbuf + 8, len, offset, &ffi);
         }
     }
-    /* This will fail. TODO: Fix the return value serialisation. */
-    KFS_ASSERT(ret <= 0);
-    val32 = htonl(-ret);
-    memcpy(resultbuf, &val32, 4);
     if (ret < 0) {
-        len = 8;
-        val32 = htonl(0);
+        /* The length of the result body. */
+        len = 0;
     } else {
-        len = ret + 8;
-        val32 = htonl(ret);
+        len = ret;
     }
-    /* The length of the result body. */
-    memcpy(resultbuf + 4, &val32, 4);
-    ret = send_msg(c, resultbuf, len);
+    ret = send_reply(c, ret, resultbuf, len);
+    resultbuf = KFS_FREE(resultbuf);
 
     KFS_RETURN(ret);
 }
