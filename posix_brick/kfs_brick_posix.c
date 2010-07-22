@@ -155,6 +155,58 @@ kenny_readlink(const char *fusepath, char *buf, size_t size)
 }
 
 static int
+kenny_mknod(const char *fusepath, mode_t mode, dev_t dev)
+{
+    char pathbuf[PATHBUF_SIZE];
+    int ret = 0;
+    char *fullpath = NULL;
+
+    KFS_ENTER();
+
+    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
+    if (fullpath == NULL) {
+        ret = -errno;
+    } else {
+        ret = mknod(fullpath, mode, dev);
+        if (ret == -1) {
+            ret = -errno;
+            KFS_ERROR("mknod: %s", strerror(errno));
+        }
+        if (fullpath != pathbuf) {
+            fullpath = KFS_FREE(fullpath);
+        }
+    }
+
+    KFS_RETURN(ret);
+}
+
+static int
+kenny_truncate(const char *fusepath, off_t offset)
+{
+    char pathbuf[PATHBUF_SIZE];
+    int ret = 0;
+    char *fullpath = NULL;
+
+    KFS_ENTER();
+
+    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
+    if (fullpath == NULL) {
+        ret = -errno;
+    } else {
+        ret = truncate(fullpath, offset);
+        if (ret == -1) {
+            ret = -errno;
+            KFS_ERROR("truncate: %s", strerror(errno));
+        }
+        if (fullpath != pathbuf) {
+            fullpath = KFS_FREE(fullpath);
+        }
+    }
+
+    KFS_RETURN(ret);
+}
+
+static int
 kenny_open(const char *fusepath, struct fuse_file_info *fi)
 {
     char pathbuf[PATHBUF_SIZE];
@@ -424,20 +476,18 @@ static int
 kenny_readdir(const char *fusepath, void *buf, fuse_fill_dir_t filler,
         off_t offset, struct fuse_file_info *fi)
 {
+    (void) fusepath;
     (void) offset;
 
     struct stat mystat;
     struct kenny_fh *fh = NULL;
     struct dirent *mydirent = NULL;
-    int read_more = 0;
     int ret = 0;
 
     KFS_ENTER();
 
-    KFS_DEBUG("Reading elements from dir %s", fusepath);
     fh = fh_fuse2kenny(fi->fh);
-    read_more = 1;
-    while (read_more) {
+    for (;;) {
         errno = 0;
         /* Get an entry. */
         mydirent = readdir(fh->dir);
@@ -446,7 +496,6 @@ kenny_readdir(const char *fusepath, void *buf, fuse_fill_dir_t filler,
                 ret = -errno;
                 KFS_ERROR("readdir: %s", strerror(errno));
             }
-            read_more = 0;
             break;
         }
         /* Stat that entry. This is not (yet) POSIX compliant. */
@@ -530,14 +579,16 @@ kenny_utimens(const char *fusepath, const struct timespec tvnano[2])
 static const struct fuse_operations kenny_oper = {
     .getattr = kenny_getattr,
     .readlink = kenny_readlink,
-    .open = kenny_open,
+    .mknod = kenny_mknod,
+    .mkdir = kenny_mkdir,
     .unlink = kenny_unlink,
+    .truncate = kenny_truncate,
+    .open = kenny_open,
     .read = kenny_read,
     .setxattr = kenny_setxattr,
     .getxattr = kenny_getxattr,
     .listxattr = kenny_listxattr,
     .removexattr = kenny_removexattr,
-    .mkdir = kenny_mkdir,
     .opendir = kenny_opendir,
     .readdir = kenny_readdir,
     .releasedir = kenny_releasedir,
