@@ -2,8 +2,6 @@
 import re
 import sys
 
-RE_MALLOC = re.compile(r'kfs_malloc.*0x(\w+)')
-RE_FREE = re.compile(r'kfs_free.*0x(\w+)')
 USAGE = '''Usage:
 
     %(name)s [-d] [DEBUG_FILE]
@@ -20,6 +18,9 @@ Example:
 ''' % dict(name=sys.argv[0])
 
 def main():
+    RE_MALLOC = re.compile(r'kfs_malloc.*0x(\w+)')
+    RE_FREE = re.compile(r'kfs_free.*0x(\w+)')
+    RE_TIMESTAMP = re.compile(r'\d{10}\.\d{6} ')
     stack = []
     mallocs = {}
     debug = False
@@ -44,6 +45,9 @@ def main():
         linenum += 1
         if debug:
             print '%d: %s' % (linenum, line)
+        # If timestamps are printed, ignore them.
+        if RE_TIMESTAMP.match(line):
+            line = line[18:]
         if line.startswith('[kfs_trace]'):
             stripped = line[len('[kfs_trace] '):]
             if stripped.endswith('enter'):
