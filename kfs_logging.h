@@ -23,9 +23,21 @@
 
 #define KFS_ASSERT assert
 
-#define kfs_do_nothing(format, ...) ((void) (0))
-#define kfs_log(level, fmt, ...) fprintf(stderr, level ": " fmt "\n", ## \
-        __VA_ARGS__)
+#define kfs_do_nothing(...) ((void) (0))
+
+#define kfs_log_simple(level, fmt, ...) \
+            fprintf(stderr, level ": " fmt "\n", ## __VA_ARGS__)
+/* TODO: Check if %ld is a legal printf formatter for struct timeval.tv_usec. */
+#define kfs_log_time(level, fmt, ...) do { \
+            struct timeval tv; \
+            (void) gettimeofday(&tv, NULL); \
+            kfs_log_simple("%010jd.%06ld " level, fmt, \
+                    (intmax_t) tv.tv_sec, tv.tv_usec, ## __VA_ARGS__); \
+            } while (0)
+#define kfs_log_full(level, fmt, ...) \
+            kfs_log_time("[kfs_" level "] " __FILE__ ":%d %s", fmt, __LINE__, \
+                    __func__, ## __VA_ARGS__)
+#define kfs_log kfs_log_do_nothing
 
 /* Default logging level depends on NDEBUG macro. */
 #if ! (defined(KFS_LOG_TRACE) \
@@ -41,34 +53,26 @@
 #  endif
 #endif
 
+#define KFS_DEBUG(...) kfs_log("debug", __VA_ARGS__)
+#define KFS_INFO(...) kfs_log("info", __VA_ARGS__)
+#define KFS_WARNING(...) kfs_log("WARNING", __VA_ARGS__)
+#define KFS_ERROR(...) kfs_log("ERROR", __VA_ARGS__)
 
-/* Start by defining all debug macros as being in use. */
-#define KFS_DEBUG kfs_do_nothing
-#define KFS_INFO kfs_do_nothing
-#define KFS_WARNING kfs_do_nothing
-#define KFS_ERROR kfs_do_nothing
-
-/* Now progressively strip down all unused macros. */
 #ifndef KFS_LOG_SILENT
-#  undef KFS_ERROR
-#  define KFS_ERROR(...) kfs_log("ERROR", __VA_ARGS__)
-#  ifndef KFS_LOG_ERROR
-#    undef KFS_WARNING
-#    define KFS_WARNING(...) kfs_log("WARNING", __VA_ARGS__)
-#    ifndef KFS_LOG_WARNING
-#      undef KFS_INFO
-#      define KFS_INFO(...) kfs_log("info", __VA_ARGS__)
-#      ifndef KFS_LOG_INFO
-#        undef KFS_DEBUG
-#        define KFS_DEBUG(...) kfs_log("debug", __VA_ARGS__)
-#        if defined(__GNUC__) || \
-            defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
-           /* More explicit logging (for all levels) in C99 and GCC. */
-#          undef kfs_log
-#          define kfs_log(level, fmt, ...) fprintf(stderr, "[kfs_" level "] " \
-                   __FILE__ ":%d %s: " fmt "\n", __LINE__, __func__, ## \
-                   __VA_ARGS__)
-#        endif
+#  undef kfs_log
+#  if defined(KFS_LOG_ERROR) || defined(KFS_LOG_WARNING)
+#    define kfs_log kfs_log_simple
+#  else
+#    include <sys/time.h>
+#    include <stdint.h>
+#    if defined(KFS_LOG_INFO)
+#      define kfs_log kfs_log_time
+#    else
+#      if (defined(__GNUC__) || \
+          (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L))
+#        define kfs_log kfs_log_full
+#      else
+#        define kfs_log kfs_log_time
 #      endif
 #    endif
 #  endif

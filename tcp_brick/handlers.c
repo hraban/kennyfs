@@ -472,6 +472,7 @@ kenny_write(const char *path, const char *buf, size_t nbyte, off_t offset,
     memcpy(operbuf + 14, &val64, 8);
     memcpy(operbuf + 22, buf, nbyte);
     ret = do_operation_wrapper(KFS_OPID_WRITE, operbuf, bodylen, NULL, 0);
+    operbuf = KFS_FREE(operbuf);
 
     KFS_RETURN(ret);
 }
