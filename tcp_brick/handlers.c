@@ -399,14 +399,14 @@ kenny_open(const char *path, struct fuse_file_info *ffi)
     KFS_ENTER();
 
     pathlen = strlen(path);
-    operbuf = KFS_MALLOC(pathlen + 5 + 6);
+    operbuf = KFS_MALLOC(pathlen + 4 + 6);
     if (operbuf == NULL) {
         KFS_RETURN(-ENOMEM);
     }
     flags_serialised = htonl(ffi->flags);
     memcpy(operbuf + 6, &flags_serialised, 4);
     memcpy(operbuf + 10, path, pathlen);
-    ret = do_operation_wrapper(KFS_OPID_OPEN, operbuf, pathlen + 5, resbuf,
+    ret = do_operation_wrapper(KFS_OPID_OPEN, operbuf, pathlen + 4, resbuf,
             sizeof(resbuf));
     operbuf = KFS_FREE(operbuf);
     if (ret == 0) {
