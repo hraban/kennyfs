@@ -205,7 +205,7 @@ connect_to_server(const struct kfs_brick_tcp_arg *conf)
 
     KFS_ENTER();
 
-    KFS_INFO("Connecting to %s:%s.", conf->hostname, conf->port);
+    KFS_INFO("Connecting to %s:%s...", conf->hostname, conf->port);
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
@@ -225,7 +225,7 @@ connect_to_server(const struct kfs_brick_tcp_arg *conf)
         if (ret == -1) {
             /* Order is important: KFS_INFO() might reset errno. */
             atleastonegood |= recoverable_error(errno);
-            KFS_INFO("connect: %s", strerror(errno));
+            KFS_INFO("connect: %s. Trying again...", strerror(errno));
             continue;
         }
         /* Found a good socket. */
@@ -236,9 +236,10 @@ connect_to_server(const struct kfs_brick_tcp_arg *conf)
         freeaddrinfo(servinfo);
     }
     if (p == NULL) {
-        KFS_ERROR("Could not connect to %s:%s", conf->hostname, conf->port);
+        KFS_ERROR("Could not connect to %s:%s.", conf->hostname, conf->port);
         KFS_RETURN(-1 - atleastonegood);
     }
+    KFS_INFO("Connection succeeded.");
 
     KFS_RETURN(sockfd);
 }

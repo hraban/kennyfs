@@ -26,6 +26,28 @@
 #include "tcp_server/server.h"
 
 static const struct fuse_operations *oper = NULL;
+/**
+ * Number of bytes to allocate, initially, during opendir(), for the next
+ * readdir(). If during readdir() it turns out more space is needed, more space
+ * will be allocated dynamically.
+ */
+static const unsigned int READDIRBUF_SIZE = 10000;
+
+/** State information used by readdir. */
+struct _readdir_fh_t {
+    off_t used;
+    char *buf;
+    size_t size;
+};
+typedef struct _readdir_fh_t readdir_fh_t;
+
+/** File handle for directory operations. */
+struct _dirfh_t {
+    /** File handle struct from FUSE, passed to backend. */
+    struct fuse_file_info ffi;
+    readdir_fh_t readdir;
+};
+typedef struct _dirfh_t dirfh_t;
 
 /**
  * Send a reply to given client. The return value is serialised according to the
@@ -67,15 +89,17 @@ send_reply(client_t c, int returnvalue, char *buf, size_t bodysize)
  * Indicates to the client that the operation it sent was invalid / corrupt.
  */
 static int
-report_invalid(client_t c)
+report_error(client_t c, int error)
 {
     char resultbuf[8];
     int ret = 0;
 
     KFS_ENTER();
 
-    KFS_INFO("Received invalid / corrupt request from client.");
-    ret = send_reply(c, -EINVAL, resultbuf, 0);
+    KFS_ASSERT(error >= 0);
+    KFS_INFO("An operation failed, sending error %d to client: %s", error,
+            strerror(error));
+    ret = send_reply(c, -error, resultbuf, 0);
 
     KFS_RETURN(ret);
 }
@@ -318,7 +342,7 @@ handle_symlink(client_t c, const char *rawop, size_t opsize)
         path1len = ntohl(path1len);
         /* Check that the paths are separated by a '\0'-byte. */
         if (rawop[4 + path1len] != '\0') {
-            report_invalid(c);
+            report_error(c, EINVAL);
             KFS_RETURN(-1);
         }
         path1 = rawop + 4;
@@ -356,7 +380,7 @@ handle_rename(client_t c, const char *rawop, size_t opsize)
         path1len = ntohl(path1len);
         /* Check that the paths are separated by a '\0'-byte. */
         if (rawop[4 + path1len] != '\0') {
-            report_invalid(c);
+            report_error(c, EINVAL);
             KFS_RETURN(-1);
         }
         path1 = rawop + 4;
@@ -394,7 +418,7 @@ handle_link(client_t c, const char *rawop, size_t opsize)
         path1len = ntohl(path1len);
         /* Check that the paths are separated by a '\0'-byte. */
         if (rawop[4 + path1len] != '\0') {
-            report_invalid(c);
+            report_error(c, EINVAL);
             KFS_RETURN(-1);
         }
         path1 = rawop + 4;
@@ -519,6 +543,8 @@ handle_truncate(client_t c, const char *rawop, size_t opsize)
  *
  * TODO: The flags element is an int in the original struct, which is larger
  * than a uint32_t on some architectures. Can that become a problem?
+ *
+ * TODO: Guarantee that a release() will follow, also for the backend's sake.
  */
 static int
 handle_open(client_t c, const char *rawop, size_t opsize)
@@ -646,7 +672,7 @@ handle_write(client_t c, const char *rawop, size_t opsize)
     }
     ret = send_reply(c, ret, resultbuf, 0);
 
-    KFS_RETURN(0);
+    KFS_RETURN(ret);
 }
 
 /**
@@ -663,7 +689,7 @@ handle_release(client_t c, const char *rawop, size_t opsize)
     KFS_ENTER();
 
     if (opsize != 8) {
-        report_invalid(c);
+        report_error(c, EINVAL);
         KFS_RETURN(-1);
     }
     if (oper->release == NULL) {
@@ -674,7 +700,7 @@ handle_release(client_t c, const char *rawop, size_t opsize)
     }
     ret = send_reply(c, ret, resultbuf, 0);
 
-    KFS_RETURN(0);
+    KFS_RETURN(ret);
 }
 
 /**
@@ -685,14 +711,14 @@ handle_release(client_t c, const char *rawop, size_t opsize)
 static int
 handle_fsync(client_t c, const char *rawop, size_t opsize)
 {
-    char resultbuf[9];
+    char resultbuf[8];
     struct fuse_file_info ffi;
     int ret = 0;
 
     KFS_ENTER();
 
     if (opsize != 9) {
-        report_invalid(c);
+        report_error(c, EINVAL);
         KFS_RETURN(-1);
     }
     if (oper->fsync == NULL) {
@@ -703,35 +729,51 @@ handle_fsync(client_t c, const char *rawop, size_t opsize)
     }
     ret = send_reply(c, ret, resultbuf, 0);
 
-    KFS_RETURN(0);
+    KFS_RETURN(ret);
 }
 
 /**
  * Handle a opendir operation. The argument message is the pathname of the
  * directory. The return message is the filehandle that must be supplied with
  * every subsequent operation on this directory (8 bytes).
+ *
+ * TODO: Guarantee that a closedir() will follow, also for the backend's sake.
  */
 static int
 handle_opendir(client_t c, const char *rawop, size_t opsize)
 {
     (void) opsize;
 
-    char resultbuf[16];
-    struct fuse_file_info ffi;
+    char resultbuf[8 + 8];
+    dirfh_t * dirfh = NULL;
     int ret = 0;
 
     KFS_ENTER();
 
     if (oper->opendir == NULL) {
-        ret = -ENOSYS;
-    } else {
-        memcpy(&ffi.fh, rawop, 8);
-        ret = oper->opendir(rawop, &ffi);
+        report_error(c, ENOSYS);
+        KFS_RETURN(0);
     }
-    memcpy(resultbuf + 8, &ffi.fh, 8);
+    dirfh = KFS_CALLOC(1, sizeof(*dirfh));
+    if (dirfh == NULL) {
+        report_error(c, ENOMEM);
+        KFS_RETURN(-1);
+    }
+    dirfh->readdir.size = READDIRBUF_SIZE;
+    dirfh->readdir.used = 0;
+    dirfh->readdir.buf = KFS_MALLOC(dirfh->readdir.size);
+    if (dirfh->readdir.buf == NULL) {
+        dirfh = KFS_FREE(dirfh);
+        report_error(c, ENOMEM);
+        KFS_RETURN(-1);
+    }
+    ret = oper->opendir(rawop, &dirfh->ffi);
+    /* 8 bytes are reserved for the fh. If it is smaller, no problem. */
+    KFS_ASSERT(sizeof(dirfh) <= 8);
+    memcpy(resultbuf + 8, &dirfh, sizeof(dirfh));
     ret = send_reply(c, ret, resultbuf, 8);
 
-    KFS_RETURN(0);
+    KFS_RETURN(ret);
 }
 
 /**
@@ -742,24 +784,26 @@ static int
 handle_releasedir(client_t c, const char *rawop, size_t opsize)
 {
     char resultbuf[8];
-    struct fuse_file_info ffi;
+    dirfh_t *dirfh = NULL;
     int ret = 0;
 
     KFS_ENTER();
 
     if (opsize != 8) {
-        report_invalid(c);
+        report_error(c, EINVAL);
         KFS_RETURN(-1);
     }
     if (oper->releasedir == NULL) {
-        ret = -ENOSYS;
-    } else {
-        memcpy(&ffi.fh, rawop, 8);
-        ret = oper->releasedir(NULL, &ffi);
+        report_error(c, ENOSYS);
+        KFS_RETURN(0);
     }
+    memcpy(&dirfh, rawop, sizeof(dirfh));
+    ret = oper->releasedir(NULL, &(dirfh->ffi));
+    dirfh->readdir.buf = KFS_FREE(dirfh->readdir.buf);
+    dirfh = KFS_FREE(dirfh);
     ret = send_reply(c, ret, resultbuf, 0);
 
-    KFS_RETURN(0);
+    KFS_RETURN(ret);
 }
 
 /**

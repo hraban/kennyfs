@@ -20,7 +20,27 @@ kfs_malloc(size_t s)
     if (p == NULL) {
         KFS_ERROR("malloc: %s", strerror(errno));
     } else {
-        KFS_DEBUG("Allocated %u bytes of memory at %p.", s, p);
+        KFS_DEBUG("Allocated %lu bytes of memory at %p.", (unsigned long) s, p);
+    }
+
+    return p;
+}
+
+/**
+ * Minimalistic wrapper around syscall calloc().
+ */
+inline void *
+kfs_calloc(size_t n, size_t s)
+{
+    void *p = NULL;
+
+    KFS_ASSERT(s >= 0);
+    p = calloc(n, s);
+    if (p == NULL) {
+        KFS_ERROR("calloc: %s", strerror(errno));
+    } else {
+        KFS_DEBUG("Allocated and zeroed %lu bytes of memory at %p.", (unsigned
+                    long) s, p);
     }
 
     return p;

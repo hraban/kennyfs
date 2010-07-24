@@ -16,35 +16,19 @@ Example:
     ...
 
 ''' % dict(name=sys.argv[0])
+RE_MALLOC = re.compile(r'kfs_[cm]alloc.*0x(\w+)')
+RE_FREE = re.compile(r'kfs_free.*0x(\w+)')
+RE_TIMESTAMP = re.compile(r'\d{10}\.\d{6} ')
 
-def main():
-    RE_MALLOC = re.compile(r'kfs_malloc.*0x(\w+)')
-    RE_FREE = re.compile(r'kfs_free.*0x(\w+)')
-    RE_TIMESTAMP = re.compile(r'\d{10}\.\d{6} ')
+def scan(f, debug=False):
     stack = []
     mallocs = {}
-    debug = False
-    if '-d' in sys.argv:
-        sys.argv.remove('-d')
-        debug = True
-    if '-h' in sys.argv or '--help' in sys.argv or len(sys.argv) > 2:
-        print __doc__
-        print
-        print USAGE
-        sys.exit(0)
-    try:
-        output = sys.argv[1]
-    except IndexError:
-        output = '-'
-    if output == '-':
-        f = sys.stdin
-    else:
-        f = open(output, 'rt')
+    totalmallocs = 0
     for linenum, line in enumerate(f):
         line = line.strip()
         linenum += 1
         if debug:
-            print '%d: %s' % (linenum, line)
+            print >> sys.stderr, '%d: %s' % (linenum, line)
         # If timestamps are printed, ignore them.
         if RE_TIMESTAMP.match(line):
             line = line[18:]
@@ -58,6 +42,7 @@ def main():
         elif line.startswith('[kfs_debug] kfs_memory.c:'):
             m = RE_MALLOC.search(line)
             if m is not None:
+		totalmallocs += 1
                 memaddr = int(m.group(1), 16)
                 try:
                     func = stack[-1]
@@ -72,6 +57,8 @@ def main():
                 memaddr = int(m.group(1), 16)
                 del mallocs[memaddr]
                 continue
+    if debug:
+	print >> sys.stderr, 'Total number of allocations: %d' % totalmallocs
     if mallocs:
         print 'Mallocs that were never freed:'
         print
@@ -82,6 +69,25 @@ def main():
         sys.exit(1)
     else:
         print 'No memory leaks detected.'
+
+def main():
+    debug = False
+    if '-d' in sys.argv:
+        sys.argv.remove('-d')
+        debug = True
+    if '-h' in sys.argv or '--help' in sys.argv:
+        print __doc__
+        print
+        print USAGE
+        sys.exit(0)
+    if len(sys.argv) == 1:
+        sys.argv.append('-')
+    for fname in sys.argv[1:]:
+        if fname == '-':
+            f = sys.stdin
+        else:
+            f = open(fname)
+        scan(f, debug)
 
 if __name__ == '__main__':
     main()
