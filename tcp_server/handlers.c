@@ -898,6 +898,8 @@ handle_readdir(client_t c, const char *rawop, size_t opsize)
     KFS_DEBUG("Completed readdir call, sending back %lu bytes.", (unsigned long)
             rdfh->used);
     ret = send_reply(c, ret, rdfh->_realbuf, rdfh->used);
+    /* Flush the buffer. */
+    rdfh->used = 0;
 
     KFS_RETURN(ret);
 }
