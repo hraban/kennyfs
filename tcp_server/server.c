@@ -25,7 +25,7 @@
 #include "tcp_server/handlers.h"
 
 /** The size of per-client read and write buffers. */
-#define BUF_LEN 100
+#define BUF_LEN 100000
 
 /**
  * Configuration variables.
@@ -635,7 +635,8 @@ send_msg(client_t c, const char *msg, size_t msglen)
     /* Free space in buffer, total. */
     len = BUF_LEN - c->writebuf_used;
     if (msglen > len) {
-        KFS_ERROR("Not enough space in buffer to send message.");
+        KFS_ERROR("Not enough space left in buffer to send %lu byte message.",
+                (unsigned long) msglen);
         KFS_RETURN(-1);
     }
     /* Last used address + 1. */

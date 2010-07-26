@@ -19,11 +19,13 @@
 #include "tcp_brick/tcp_brick.h"
 
 /** Maximum number of subsequent reconnect retries. */
-static const unsigned int MAX_RETRIES = 10;
+static const unsigned int MAX_RETRIES = 5;
 /** Number of seconds to wait after failed attempt before reconnecting. */
 static const unsigned int RETRY_DELAY = 3;
 static struct kfs_brick_tcp_arg myconf;
 static int cached_sockfd = 0;
+/** Buffer that is intended for write-only operations. Reads are undefined. */
+static char devnull[1024];
 
 /**
  * Returns true if a previously executed socket-operation-related syscall that
@@ -285,17 +287,46 @@ refresh_socket(int sockfd, unsigned int *retries,
 }
 
 /**
+ * Disregard the n next incoming bytes on given socket. Returns 0 on success,
+ * something else (see kfs_recv()) on failure.
+ */
+static int
+flush_incoming_data(int sockfd, size_t numbytes)
+{
+    int ret = 0;
+
+    KFS_ENTER();
+
+    for (;;) {
+        ret = kfs_recv(sockfd, devnull, min(sizeof(devnull), numbytes));
+        if (ret != 0) {
+            KFS_RETURN(ret);
+        }
+        if (numbytes < sizeof(devnull)) {
+            KFS_DEBUG("Unexpected data succesfully discarded.");
+            KFS_RETURN(0);
+        }
+        numbytes -= sizeof(devnull);
+    }
+
+    /* Control never reaches this point. */
+    KFS_RETURN(-1);
+}
+
+/**
  * Send given operation to the server and wait for its reply. Returns -1 on
  * unrecoverable failure, otherwise returns 0. The return value coming in from
  * the server is stored in the location pointed to by `serverret'.  Note that if
  * a negative return value comes in from the server (i.e.: failure of its
  * backend), the result buffer is ignored and that value is returned
  * immediately. On success, however, this function blocks until the entire
- * result is in.
+ * result is in. On success of this function (not of the server per-se, i.e.:
+ * return value of zero), the value of resbufsize is set to how much meaningful
+ * data the result buffer is filled with.
  */
 int
-do_operation(const char *operbuf, size_t operbufsize,
-             char *resbuf, size_t resbufsize, int *serverret)
+do_operation(const char *operbuf, const size_t *operbufsize,
+             char *resbuf, size_t *resbufsize, int *serverret)
 {
     char headerbuf[8];
     uint32_t retval = 0;
@@ -306,35 +337,60 @@ do_operation(const char *operbuf, size_t operbufsize,
 
     KFS_ENTER();
 
-    KFS_ASSERT((resbuf == NULL) == (resbufsize == 0));
-    KFS_ASSERT(operbuf != NULL && serverret != NULL);
+    KFS_ASSERT(operbuf != NULL && serverret != NULL && operbufsize != NULL &&
+            resbufsize != NULL);
+    KFS_ASSERT((resbuf == NULL) == (*resbufsize == 0));
     retries = MAX_RETRIES;
     for (;;) {
-        ret = kfs_sendrecv(cached_sockfd, operbuf, operbufsize, headerbuf, 8);
+        ret = kfs_sendrecv(cached_sockfd, operbuf, *operbufsize, headerbuf, 8);
         if (ret == 0) {
             /* Network operation was a success. */
             memcpy(&retval, headerbuf, 4);
             retval = ntohl(retval);
             *serverret = retval - (1 << 31);
-            if (*serverret < 0) {
-                /* The backend of the server failed: exit immediately. */
-                KFS_RETURN(0);
-            }
             memcpy(&result_size, headerbuf + 4, 4);
             result_size = ntohl(result_size);
-            if (result_size > resbufsize) {
+            if (*serverret < 0) {
+                /* The backend of the server failed: exit immediately. */
+                *resbufsize = 0;
+                if (result_size != 0) {
+                    KFS_WARNING("Result body was sent despite of error.");
+                    ret = flush_incoming_data(cached_sockfd, result_size);
+                    if (ret != 0) {
+                        KFS_WARNING("Discarding that unexpected data failed.");
+                        KFS_RETURN(-1);
+                    }
+                    /* This will not be returned as a fatal error. */
+                }
+                KFS_RETURN(0);
+            }
+            if (result_size > MAX_MESSAGE_LEN - 8) {
+                KFS_WARNING("Received an unusually large reply: %u bytes."
+                        " Either the server and client's configuration are not"
+                        " synchronised or the communication channel is broken."
+                        " Hoping a reconnection will fix this...", result_size);
+                ret = 1;
+            } else if (result_size > *resbufsize) {
                 /* Result is too big for given buffer. */
                 KFS_WARNING("Reply from server (%u bytes) is too large for "
-                            "buffer (%lu bytes).", result_size,
-                            (unsigned long) resbufsize);
-                KFS_RETURN(-1);
-            }
-            /* Backend operation also succeeded: retrieve the body (if any). */
-            if (result_size != 0) {
+                            "supplied buffer (%lu bytes).", result_size,
+                            (unsigned long) *resbufsize);
+                /* Try to flush the unexpected pending data. */
+                ret = flush_incoming_data(cached_sockfd, result_size);
+                if (ret == 0) {
+                    KFS_RETURN(-1);
+                } else {
+                    KFS_WARNING("Flushing unexpected data failed. Must "
+                            "reconnect.");
+                    ret = 1;
+                }
+            } else if (result_size != 0) {
+                /* Backend operation succeeded: retrieve the body (if any). */
                 ret = kfs_recv(cached_sockfd, resbuf, result_size);
             }
             if (ret == 0) {
                 /* Everything succeeded. */
+                *resbufsize = result_size;
                 KFS_RETURN(0);
             }
             /**
@@ -355,6 +411,7 @@ do_operation(const char *operbuf, size_t operbufsize,
          */
         do {
             if (retries == 0) {
+                KFS_WARNING("Reconnection seems futile.");
                 KFS_RETURN(-1);
             }
             retries -= 1;

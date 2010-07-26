@@ -42,6 +42,14 @@
 
 /** The start of the protocol: sent whenever a new client connects. */
 #define SOP_STRING "poep\x0a"
+/**
+ * Messages between server and client are guaranteed to never exceed this
+ * value. This helps in detecting corrupted message headers containing (part of
+ * the) message length in bytes.
+ *
+ * TODO: Make the server honour this limit as well.
+ */
+#define MAX_MESSAGE_LEN (1 << 20)
 
 /**
  * Identifiers for fuse operations.

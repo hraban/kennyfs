@@ -6,7 +6,7 @@
 #include "tcp_brick/kfs_brick_tcp.h"
 
 int init_connection(const struct kfs_brick_tcp_arg *conf);
-int do_operation(const char *operbuf, size_t operbufsize,
-                 char *resbuf, size_t resbufsize, int *serverret);
+int do_operation(const char *operbuf, const size_t *operbufsize,
+                 char *resbuf, size_t *resbufsize, int *serverret);
 
 #endif

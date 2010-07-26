@@ -37,6 +37,7 @@ static const unsigned int READDIRBUF_SIZE = 10000;
 struct _readdir_fh_t {
     off_t used;
     char *buf;
+    char *_realbuf;
     size_t size;
 };
 typedef struct _readdir_fh_t readdir_fh_t;
@@ -105,9 +106,10 @@ report_error(client_t c, int error)
 }
 
 /**
- * Handle a getattr operation. The argument message is the raw pathname. The
- * return message is a struct stat serialised as 13 htonl()'ed uint32_t's. The
- * elements are ordered as follows:
+ * Serialise a struct stat to an array of 13 uint32_t elements. Returns a
+ * pointer to the array. Total size in bytes: 52.
+ *
+ * The elements are ordered as follows:
  *
  * - st_dev
  * - st_ino
@@ -125,6 +127,34 @@ report_error(client_t c, int error)
  *
  * This assumes that all those values are of a type that entirely fits in a
  * uint32_t. TODO: Check if that is always the case.
+ */
+static uint32_t *
+serialise_stat(uint32_t *intbuf, const struct stat *stbuf)
+{
+    KFS_ENTER();
+
+    KFS_ASSERT(intbuf != NULL && stbuf != NULL);
+    KFS_ASSERT(sizeof(uint32_t) == 4);
+    intbuf[0] = htonl(stbuf->st_dev);
+    intbuf[1] = htonl(stbuf->st_ino);
+    intbuf[2] = htonl(stbuf->st_mode);
+    intbuf[3] = htonl(stbuf->st_nlink);
+    intbuf[4] = htonl(stbuf->st_uid);
+    intbuf[5] = htonl(stbuf->st_gid);
+    intbuf[6] = htonl(stbuf->st_rdev);
+    intbuf[7] = htonl(stbuf->st_size);
+    intbuf[8] = htonl(stbuf->st_blksize);
+    intbuf[9] = htonl(stbuf->st_blocks);
+    intbuf[10] = htonl(stbuf->st_atime);
+    intbuf[11] = htonl(stbuf->st_mtime);
+    intbuf[12] = htonl(stbuf->st_ctime);
+
+    KFS_RETURN(intbuf);
+}
+
+/**
+ * Handle a getattr operation. The argument message is the raw pathname. The
+ * return message is a struct stat serialised by the serialise_stat() routine.
  */
 static int
 handle_getattr(client_t c, const char *rawop, size_t opsize)
@@ -148,20 +178,8 @@ handle_getattr(client_t c, const char *rawop, size_t opsize)
     KFS_ASSERT(ret <= 0);
     if (ret == 0) {
         /* Call succeeded, also send the body. */
-        intbuf[0] = htonl(stbuf.st_dev);
-        intbuf[1] = htonl(stbuf.st_ino);
-        intbuf[2] = htonl(stbuf.st_mode);
-        intbuf[3] = htonl(stbuf.st_nlink);
-        intbuf[4] = htonl(stbuf.st_uid);
-        intbuf[5] = htonl(stbuf.st_gid);
-        intbuf[6] = htonl(stbuf.st_rdev);
-        intbuf[7] = htonl(stbuf.st_size);
-        intbuf[8] = htonl(stbuf.st_blksize);
-        intbuf[9] = htonl(stbuf.st_blocks);
-        intbuf[10] = htonl(stbuf.st_atime);
-        intbuf[11] = htonl(stbuf.st_mtime);
-        intbuf[12] = htonl(stbuf.st_ctime);
         bodysize = sizeof(intbuf);
+        serialise_stat(intbuf, &stbuf);
         memcpy(resbuf + 8, intbuf, bodysize);
     } else {
         /* Call failed, return only the error code. */
@@ -761,17 +779,125 @@ handle_opendir(client_t c, const char *rawop, size_t opsize)
     }
     dirfh->readdir.size = READDIRBUF_SIZE;
     dirfh->readdir.used = 0;
-    dirfh->readdir.buf = KFS_MALLOC(dirfh->readdir.size);
-    if (dirfh->readdir.buf == NULL) {
+    /* For the motivation behind the + 8, see the readdir() handler. */
+    dirfh->readdir._realbuf = KFS_MALLOC(dirfh->readdir.size + 8);
+    if (dirfh->readdir._realbuf == NULL) {
         dirfh = KFS_FREE(dirfh);
         report_error(c, ENOMEM);
         KFS_RETURN(-1);
     }
+    dirfh->readdir.buf = dirfh->readdir._realbuf + 8;
     ret = oper->opendir(rawop, &dirfh->ffi);
     /* 8 bytes are reserved for the fh. If it is smaller, no problem. */
     KFS_ASSERT(sizeof(dirfh) <= 8);
     memcpy(resultbuf + 8, &dirfh, sizeof(dirfh));
     ret = send_reply(c, ret, resultbuf, 8);
+
+    KFS_RETURN(ret);
+}
+
+/**
+ * The FUSE API requires a handler to be passed to a readdir() call which will
+ * take in directory entries and store them in a buffer. This function is such a
+ * handler.
+ */
+static int
+readdir_filler(void *rdfh_, const char *name, const struct stat *stbuf, off_t off)
+{
+    readdir_fh_t * const rdfh = rdfh_;
+    uint32_t intbuf[13];
+    uint64_t off_serialised = 0;
+    char *buf = NULL;
+    size_t namelen = 0;
+    size_t newlen = 0;
+    uint32_t namelen_serialised = 0;
+
+    KFS_ENTER();
+
+    KFS_ASSERT(rdfh_ != NULL && name != NULL && stbuf != NULL);
+    KFS_ASSERT(rdfh->buf != NULL && rdfh->used <= rdfh->size);
+    namelen = strlen(name);
+    newlen = rdfh->used + sizeof(intbuf) + 4 + 8 + namelen + 1;
+    KFS_DEBUG("Adding dir entry %s to buffer at %p. Size: %lu + %lu = %lu.",
+            name, rdfh_, (unsigned long) rdfh->used, (unsigned long) (newlen -
+            rdfh->used), (unsigned long) newlen);
+    if (newlen > rdfh->size) {
+        KFS_DEBUG("Never mind, can not grow beyond %llu bytes.",
+                (unsigned long long) rdfh->size);
+        KFS_RETURN(1);
+    }
+    buf = rdfh->buf + rdfh->used;
+    /* The struct stat. */
+    serialise_stat(intbuf, stbuf);
+    memcpy(buf, intbuf, sizeof(intbuf));
+    buf += sizeof(intbuf);
+    /* The offset. */
+    off_serialised = htonll(off);
+    memcpy(buf, &off_serialised, 8);
+    buf += 8;
+    /* The length of the name. */
+    namelen_serialised = htonl(namelen);
+    memcpy(buf, &namelen_serialised, 4);
+    buf += 4;
+    /* The name itself. */
+    memcpy(buf, name, namelen);
+    buf += namelen;
+    /* The terminating '\0'-byte. */
+    *buf = '\0';
+    /* Now pointing one byte beyond this entry. */
+    buf += 1;
+    rdfh->used = newlen;
+    KFS_ASSERT(rdfh->buf + rdfh->used == buf);
+
+    KFS_RETURN(0);
+}
+
+/**
+ * Handle a readdir operation. The argument message consists of the following
+ * elements:
+ *
+ * - file handle (8 bytes)
+ * - offset in the directory entries (8 bytes, network order)
+ *
+ * The return message contains all entries in the given directory, each of them
+ * serialised as follows:
+ *
+ * - a serialised stat struct (see serialise_stat())
+ * - the offset as passed to the filler as a uint64_t (network order, 8 bytes)
+ * - the length of the entry name as a uint32_t (network order, 4 bytes)
+ * - the name of the entry
+ * - one '\0' byte as a terminator.
+ */
+static int
+handle_readdir(client_t c, const char *rawop, size_t opsize)
+{
+    uint64_t off = 0;
+    dirfh_t *dirfh = NULL;
+    readdir_fh_t *rdfh = NULL;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    if (opsize != 16) {
+        report_error(c, EINVAL);
+        KFS_RETURN(-1);
+    }
+    if (oper->readdir == NULL) {
+        report_error(c, ENOSYS);
+        KFS_RETURN(0);
+    }
+    memcpy(&dirfh, rawop, sizeof(dirfh));
+    rdfh = &(dirfh->readdir);
+    memcpy(&off, rawop + 8, 8);
+    off = ntohll(off);
+    ret = oper->readdir(NULL, rdfh, readdir_filler, off, &(dirfh->ffi));
+    /*
+     * This is where the 8 hidden leading allocated bytes in the buffer come in
+     * handy:
+     */
+    KFS_DEBUG("Completed readdir call, sending back %lu bytes.", (unsigned long)
+            rdfh->used);
+    ret = send_reply(c, ret, rdfh->_realbuf, rdfh->used);
 
     KFS_RETURN(ret);
 }
@@ -799,7 +925,7 @@ handle_releasedir(client_t c, const char *rawop, size_t opsize)
     }
     memcpy(&dirfh, rawop, sizeof(dirfh));
     ret = oper->releasedir(NULL, &(dirfh->ffi));
-    dirfh->readdir.buf = KFS_FREE(dirfh->readdir.buf);
+    dirfh->readdir.buf = KFS_FREE(dirfh->readdir._realbuf);
     dirfh = KFS_FREE(dirfh);
     ret = send_reply(c, ret, resultbuf, 0);
 
@@ -852,7 +978,7 @@ static const handler_t handlers[KFS_OPID_MAX_] = {
     [KFS_OPID_RELEASE] = handle_release,
     [KFS_OPID_FSYNC] = handle_fsync,
     [KFS_OPID_OPENDIR] = handle_opendir,
-    [KFS_OPID_READDIR] = NULL,
+    [KFS_OPID_READDIR] = handle_readdir,
     [KFS_OPID_RELEASEDIR] = handle_releasedir,
     [KFS_OPID_QUIT] = handle_quit,
 };
