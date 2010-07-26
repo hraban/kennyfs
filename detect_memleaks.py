@@ -4,10 +4,10 @@ import sys
 
 USAGE = '''Usage:
 
-    %(name)s [-d] [DEBUG_FILE]
+    %(name)s [-d] [-v] [DEBUG_FILE]
 
 If the debug file is omitted or set to '-', stdin is read instead of a file.
-Option -d enables debug mode.
+Option -v enables verbose mode, -d enables debug mode.
 
 Example:
 
@@ -20,14 +20,14 @@ RE_MALLOC = re.compile(r'kfs_[cm]alloc.*0x(\w+)')
 RE_FREE = re.compile(r'kfs_free.*0x(\w+)')
 RE_TIMESTAMP = re.compile(r'\d{10}\.\d{6} ')
 
-def scan(f, debug=False):
+def scan(f, debuglevel=0):
     stack = []
     mallocs = {}
     totalmallocs = 0
     for linenum, line in enumerate(f):
         line = line.strip()
         linenum += 1
-        if debug:
+        if debuglevel > 1:
             print >> sys.stderr, '%d: %s' % (linenum, line)
         # If timestamps are printed, ignore them.
         if RE_TIMESTAMP.match(line):
@@ -42,7 +42,7 @@ def scan(f, debug=False):
         elif line.startswith('[kfs_debug] kfs_memory.c:'):
             m = RE_MALLOC.search(line)
             if m is not None:
-		totalmallocs += 1
+                totalmallocs += 1
                 memaddr = int(m.group(1), 16)
                 try:
                     func = stack[-1]
@@ -57,8 +57,8 @@ def scan(f, debug=False):
                 memaddr = int(m.group(1), 16)
                 del mallocs[memaddr]
                 continue
-    if debug:
-	print >> sys.stderr, 'Total number of allocations: %d' % totalmallocs
+    if debuglevel > 0:
+        print >> sys.stderr, 'Total number of allocations: %d' % totalmallocs
     if mallocs:
         print 'Mallocs that were never freed:'
         print
@@ -71,10 +71,13 @@ def scan(f, debug=False):
         print 'No memory leaks detected.'
 
 def main():
-    debug = False
+    debuglevel = 0
+    if '-v' in sys.argv:
+        sys.argv.remove('-v')
+        debuglevel = 1
     if '-d' in sys.argv:
         sys.argv.remove('-d')
-        debug = True
+        debuglevel = 2
     if '-h' in sys.argv or '--help' in sys.argv:
         print __doc__
         print
@@ -87,7 +90,7 @@ def main():
             f = sys.stdin
         else:
             f = open(fname)
-        scan(f, debug)
+        scan(f, debuglevel)
 
 if __name__ == '__main__':
     main()
