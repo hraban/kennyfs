@@ -160,8 +160,12 @@ kenny_readlink(const char *path, char *buf, size_t size)
         KFS_RETURN(-ENOMEM);
     }
     memcpy(operbuf + 6, path, pathlen);
-    ret = do_operation_wrapper(KFS_OPID_READLINK, operbuf, pathlen, buf, size,
-            &size);
+    /* Account for the final \0 byte. */
+    ret = do_operation_wrapper(KFS_OPID_READLINK, operbuf, pathlen, buf,
+            size - 1, &size);
+    if (ret == 0) {
+        buf[size] = '\0';
+    }
     operbuf = KFS_FREE(operbuf);
 
     KFS_RETURN(ret);
