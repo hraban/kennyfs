@@ -76,7 +76,7 @@
 #      include <sys/time.h>
 #      include <stdint.h>
 #      undef kfs_log
-#      define kfsLog kfs_log_time
+#      define kfs_log kfs_log_time
 #      undef KFS_INFO
 #      define KFS_INFO(...) kfs_log("info", __VA_ARGS__)
 #      ifndef KFS_LOG_INFO
