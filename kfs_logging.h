@@ -22,6 +22,12 @@
  */
 
 #define KFS_ASSERT assert
+/* KFS_NASSERT is executed verbatim in NON-debugging mode. */
+#ifdef NDEBUG
+#  define KFS_NASSERT(x) x
+#else
+#  define KFS_NASSERT(X) ((void) 0)
+#endif
 
 #define kfs_do_nothing(...) ((void) (0))
 
@@ -53,26 +59,34 @@
 #  endif
 #endif
 
-#define KFS_DEBUG(...) kfs_log("debug", __VA_ARGS__)
-#define KFS_INFO(...) kfs_log("info", __VA_ARGS__)
-#define KFS_WARNING(...) kfs_log("WARNING", __VA_ARGS__)
-#define KFS_ERROR(...) kfs_log("ERROR", __VA_ARGS__)
+#define KFS_DEBUG kfs_do_nothing
+#define KFS_INFO kfs_do_nothing
+#define KFS_WARNING kfs_do_nothing
+#define KFS_ERROR kfs_do_nothing
 
 #ifndef KFS_LOG_SILENT
 #  undef kfs_log
-#  if defined(KFS_LOG_ERROR) || defined(KFS_LOG_WARNING)
-#    define kfs_log kfs_log_simple
-#  else
-#    include <sys/time.h>
-#    include <stdint.h>
-#    if defined(KFS_LOG_INFO)
-#      define kfs_log kfs_log_time
-#    else
-#      if (defined(__GNUC__) || \
-          (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L))
-#        define kfs_log kfs_log_full
-#      else
-#        define kfs_log kfs_log_time
+#  define kfs_log kfs_log_simple
+#  undef KFS_ERROR
+#  define KFS_ERROR(...) kfs_log("ERROR", __VA_ARGS__)
+#  ifndef KFS_LOG_ERROR
+#    undef KFS_WARNING
+#    define KFS_WARNING(...) kfs_log("WARNING", __VA_ARGS__)
+#    ifndef KFS_LOG_WARNING
+#      include <sys/time.h>
+#      include <stdint.h>
+#      undef kfs_log
+#      define kfsLog kfs_log_time
+#      undef KFS_INFO
+#      define KFS_INFO(...) kfs_log("info", __VA_ARGS__)
+#      ifndef KFS_LOG_INFO
+#        if (defined(__GNUC__) || \
+            (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L))
+#          undef kfs_log
+#          define kfs_log kfs_log_full
+#        endif
+#        undef KFS_DEBUG
+#        define KFS_DEBUG(...) kfs_log("debug", __VA_ARGS__)
 #      endif
 #    endif
 #  endif
