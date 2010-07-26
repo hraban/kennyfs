@@ -460,10 +460,10 @@ kenny_open(const char *path, struct fuse_file_info *ffi)
     if (ret == 0) {
         KFS_ASSERT(sizeof(ffi->fh) == 8);
         memcpy(&(ffi->fh), resbuf, 8);
-        ffi->direct_io = (resbuf[9] << 0) & 1;
-        ffi->keep_cache = (resbuf[9] << 1) & 1;
+        ffi->direct_io = (resbuf[8] << 0) & 1;
+        ffi->keep_cache = (resbuf[8] << 1) & 1;
 #if FUSE_VERSION >= 29
-        ffi->nonseekable = (resbuf[9] << 2) & 1;
+        ffi->nonseekable = (resbuf[8] << 2) & 1;
 #endif
     }
 
