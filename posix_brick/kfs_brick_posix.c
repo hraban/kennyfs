@@ -477,7 +477,6 @@ kenny_readdir(const char *fusepath, void *buf, fuse_fill_dir_t filler,
         off_t offset, struct fuse_file_info *fi)
 {
     (void) fusepath;
-    (void) offset;
 
     struct stat mystat;
     struct kenny_fh *fh = NULL;
@@ -487,16 +486,18 @@ kenny_readdir(const char *fusepath, void *buf, fuse_fill_dir_t filler,
     KFS_ENTER();
 
     fh = fh_fuse2kenny(fi->fh);
+    seekdir(fh->dir, offset);
     for (;;) {
         errno = 0;
         /* Get an entry. */
         mydirent = readdir(fh->dir);
         if (mydirent == NULL) {
+            ret = 0;
             if (errno != 0) {
                 ret = -errno;
                 KFS_ERROR("readdir: %s", strerror(errno));
             }
-            break;
+            KFS_RETURN(ret);
         }
         /* Stat that entry. This is not (yet) POSIX compliant. */
         ret = fstatat(dirfd(fh->dir), mydirent->d_name, &mystat, 0);
@@ -506,13 +507,14 @@ kenny_readdir(const char *fusepath, void *buf, fuse_fill_dir_t filler,
             KFS_RETURN(ret);
         }
         /* Add it to the return-buffer. */
-        ret = filler(buf, mydirent->d_name, &mystat, 0);
+        ret = filler(buf, mydirent->d_name, &mystat, telldir(fh->dir));
         if (ret == 1) {
-            KFS_RETURN(-ENOBUFS);
+            KFS_RETURN(0);
         }
     }
 
-    KFS_RETURN(ret);
+    /* Control never reaches this point. */
+    KFS_RETURN(-1);
 }
 
 static int
@@ -642,6 +644,8 @@ private_delarg(struct kfs_brick_posix_arg *arg)
 static struct kfs_brick_posix_arg *
 kfs_brick_posix_char2arg(char *buf, size_t len)
 {
+    KFS_NASSERT((void) len);
+
     struct kfs_brick_posix_arg *arg = NULL;
 
     KFS_ENTER();
