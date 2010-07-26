@@ -51,6 +51,8 @@ static const handler_t *handlers = NULL;
 static void
 verify_client(client_t c)
 {
+    KFS_NASSERT((void ) c);
+
     KFS_ASSERT(c != NULL);
     KFS_ASSERT(c->readbuf_start != NULL);
     KFS_ASSERT(c->readbuf_end != NULL);

@@ -64,6 +64,8 @@ private_delarg(struct kfs_brick_tcp_arg *arg)
 static struct kfs_brick_tcp_arg *
 kfs_brick_tcp_char2arg(char *buf, size_t len)
 {
+    KFS_NASSERT((void) len);
+
     struct kfs_brick_tcp_arg *arg = NULL;
     char *delim1 = NULL;
 
