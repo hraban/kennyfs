@@ -2,6 +2,12 @@
  * Handlers for operations passed down to the kennyfs TCP brick. Documentation
  * for the format of operation messages and their return counterparts can be
  * found in the TCP brick server documentation.
+ *
+ * Most calls to the pthread library are followed by a KFS_ASSERT(return_value
+ * == 0);. This is done because these calls are simply expected to not fail: if
+ * they do, no error checking will help because the only solution would be to
+ * break down and crash, anyway. The odds are considered not worth the proper
+ * error messaging.
  */
 
 #define FUSE_USE_VERSION 29
@@ -12,6 +18,7 @@
 #include <errno.h>
 #include <fuse.h>
 #include <fuse_opt.h>
+#include <pthread.h>
 #include <stdint.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -26,6 +33,22 @@
  * operation.
  */
 const size_t READDIR_BUFSIZE = 100000;
+/**
+ * Worker thread that handles the connection with the server. It passes
+ * serialised operations over to the connection module and waits for their
+ * reply. The reason for this separate thread's existence is that it may return
+ * control of the main thread back as soon as the reply to the actual operation
+ * comes in while continuing with other activities in the background
+ * (`prefetching').
+ */
+static pthread_t connection_thread;
+/**
+ * Fixed location for argument passing between connection thread and handler
+ * thread(s).
+ */
+struct serialised_operation *putop = NULL;
+pthread_mutex_t putop_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t putop_cond = PTHREAD_COND_INITIALIZER;
 
 /**
  * Wrapper around the do_operation() routine from tcp_brick/connection.c.
@@ -45,11 +68,12 @@ static int
 do_operation_wrapper(enum fuse_op_id id, char *operbuf, size_t operbufsize,
                      char *resbuf, size_t resbufsize, size_t *realresbufsize)
 {
+    struct serialised_operation arg = {
+        .done_cond = PTHREAD_COND_INITIALIZER,
+        .done_mutex = PTHREAD_MUTEX_INITIALIZER};
     int ret = 0;
-    int serverret = 0;
     uint32_t size_serialised = 0;
     uint16_t id_serialised = 0;
-    size_t caller_resbufsize = 0;
 
     KFS_ENTER();
 
@@ -57,12 +81,46 @@ do_operation_wrapper(enum fuse_op_id id, char *operbuf, size_t operbufsize,
     /* If caller is not interested in last argument, store it in local var. */
     size_serialised = htonl(operbufsize);
     id_serialised = htons(id);
-    caller_resbufsize = resbufsize;
     memcpy(operbuf, &size_serialised, 4);
     memcpy(operbuf + 4, &id_serialised, 2);
     operbufsize += 6;
-    ret = do_operation(operbuf, &operbufsize, resbuf, &resbufsize, &serverret);
-    if (ret == -1) {
+    /* Pack all arguments into a struct. */
+    arg.id = id;
+    arg.operbuf = operbuf;
+    arg.operbufsize = operbufsize;
+    arg.resbuf = resbuf;
+    arg.resbufsize = resbufsize;
+    /* Set up the argument so that we can wait for its completion. */
+    ret = pthread_mutex_lock(&arg.done_mutex); KFS_ASSERT(ret == 0);
+    for (;;) {
+        /* Acquire the mutex before messing with globals. */
+        ret = pthread_mutex_lock(&putop_mutex); KFS_ASSERT(ret == 0);
+        if (putop == NULL) {
+            break;
+        }
+        /*
+         * Somebody has already put an operation in queue. The fact that control
+         * reached this point means this thread got the mutex before the handler
+         * thread did (a rare race condition, because that is the first thing it
+         * does). Give it some more time to acquire that mutex, handle the
+         * operation and then try again.
+         */
+        ret = pthread_mutex_unlock(&putop_mutex); KFS_ASSERT(ret == 0);
+        KFS_SLEEP(1);
+    }
+    /* Set the operation as being "next-in-line". */
+    putop = &arg;
+    /* Tell the operation handler a new one is available. */
+    ret = pthread_cond_signal(&putop_cond); KFS_ASSERT(ret == 0);
+    ret = pthread_mutex_unlock(&putop_mutex); KFS_ASSERT(ret == 0);
+    /* Wait for the operation to be handled. */
+    ret = pthread_cond_wait(&arg.done_cond, &arg.done_mutex); KFS_ASSERT(ret ==
+            0);
+    /*
+     * The operation is done. Leave the arg.done_mutex locked to prevent
+     * accidental reuse.
+     */
+    if (arg.clientret == -1) {
         /* Client side failure. */
         if (realresbufsize != NULL) {
             *realresbufsize = 0;
@@ -70,19 +128,18 @@ do_operation_wrapper(enum fuse_op_id id, char *operbuf, size_t operbufsize,
         KFS_RETURN(-EREMOTEIO);
     }
     if (realresbufsize != NULL) {
-        *realresbufsize = resbufsize;
-    } else if (serverret >= 0 && resbufsize != caller_resbufsize) {
-        /* The call succeeded but the reply size is not as expected: error. */
+        *realresbufsize = arg.resbufused;
+    } else if (arg.serverret >= 0 && arg.resbufsize != arg.resbufused) {
         KFS_WARNING("Incoming message size (%lu) is not as expected (%lu).",
-                (unsigned long) resbufsize, (unsigned long) caller_resbufsize);
+                (unsigned long) arg.resbufused, (unsigned long) arg.resbufsize);
         KFS_RETURN(-EREMOTEIO);
     }
-    if (serverret < 0) {
-        KFS_INFO("Remote side responded with error %d: %s.", serverret,
-                strerror(-serverret));
+    if (arg.serverret < 0) {
+        KFS_INFO("Remote side responded to operation %u with error %d: %s.",
+                (unsigned int) id, arg.serverret, strerror(-arg.serverret));
     }
 
-    KFS_RETURN(serverret);
+    KFS_RETURN(arg.serverret);
 }
 
 /**
@@ -694,6 +751,76 @@ static const struct fuse_operations handlers = {
     .readdir = kenny_readdir,
     .releasedir = kenny_releasedir,
 };
+
+/**
+ * Main loop of the thread that handles the connection with the server. The
+ * putop_mutex, a mutex that must be acquired by client threads before they can
+ * put a new operation in the queue, is held by this thread all the while the
+ * connection with the server is taking place. This may seem superfluous but
+ * that thread will have to wait for this current operation to finish, anyway,
+ * so better do it like this to reduce the chance of rare race-conditions.
+ */
+static void *
+handlerthread_main(void *arg)
+{
+    (void) arg;
+
+    int ret = 0;
+    struct serialised_operation *newop = NULL;
+
+    KFS_ENTER();
+
+    ret = pthread_mutex_lock(&putop_mutex); KFS_ASSERT(ret == 0);
+    /*
+     * Wait for operation flag to be set. The conditional prevents waiting for a
+     * signal that was already sent by a thread that is going super-faster than
+     * this one. That is only an issue the first time: after that, the mutex is
+     * never released outside cond_wait(). Also, there is no spurious wakup
+     * detection, simply because there is only ever one thread (this one)
+     * waiting for this condition.
+     */
+    if (putop == NULL) {
+        ret = pthread_cond_wait(&putop_cond, &putop_mutex); KFS_ASSERT(ret ==
+                0);
+    }
+    for (;;) {
+        KFS_DEBUG("Handling new operation at %p.", (void *) putop);
+        KFS_ASSERT(putop != NULL);
+        newop = putop;
+        putop = NULL;
+        newop->clientret = do_operation(newop);
+        /* Tell whoever is waiting that this operation is done. */
+        ret = pthread_mutex_lock(&newop->done_mutex); KFS_ASSERT(ret == 0);
+        ret = pthread_cond_signal(&newop->done_cond); KFS_ASSERT(ret == 0);
+        ret = pthread_mutex_unlock(&newop->done_mutex); KFS_ASSERT(ret == 0);
+        /* Wait for a new operation. */
+        ret = pthread_cond_wait(&putop_cond, &putop_mutex); KFS_ASSERT(ret ==
+                0);
+    }
+
+    KFS_RETURN(NULL);
+}
+
+/**
+ * Initialise the handlers for the TCP brick client. This starts up the thread
+ * that handles the connection with the server. Returns 0 on success, -1 on
+ * failure (in which case this module can not be used).
+ */
+int
+init_handlers(void)
+{
+    int ret = 0;
+
+    KFS_ENTER();
+
+    ret = pthread_create(&connection_thread, NULL, handlerthread_main, NULL);
+    if (ret != 0) {
+        KFS_ERROR("pthread_create: %s", strerror(ret));
+        KFS_RETURN(-1);
+    }
+
+    KFS_RETURN(0);
+}
 
 const struct fuse_operations *
 get_handlers(void)

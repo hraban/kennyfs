@@ -170,6 +170,9 @@ kenny_init(struct kfs_brick_arg *generic)
         KFS_RETURN(-1);
     }
     ret = init_connection(myconf);
+    if (ret == 0) {
+        ret = init_handlers();
+    }
 
     KFS_RETURN(ret);
 }

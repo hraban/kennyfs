@@ -3,6 +3,7 @@
 
 #include <fuse.h>
 
+int init_handlers(void);
 const struct fuse_operations * get_handlers(void);
 
 #endif

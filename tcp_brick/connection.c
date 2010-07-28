@@ -316,17 +316,13 @@ flush_incoming_data(int sockfd, size_t numbytes)
 /**
  * Send given operation to the server and wait for its reply. Returns -1 on
  * unrecoverable failure, otherwise returns 0. The return value coming in from
- * the server is stored in the location pointed to by `serverret'.  Note that if
- * a negative return value comes in from the server (i.e.: failure of its
- * backend), the result buffer is ignored and that value is returned
- * immediately. On success, however, this function blocks until the entire
- * result is in. On success of this function (not of the server per-se, i.e.:
- * return value of zero), the value of resbufsize is set to how much meaningful
- * data the result buffer is filled with.
+ * the server is stored in `arg->serverret'.  Note that if a negative return
+ * value comes in from the server (i.e.: failure of its backend), the result
+ * buffer is ignored and that value is returned immediately. On success,
+ * however, this function blocks until the entire result is in.
  */
 int
-do_operation(const char *operbuf, const size_t *operbufsize,
-             char *resbuf, size_t *resbufsize, int *serverret)
+do_operation(struct serialised_operation *arg)
 {
     char headerbuf[8];
     uint32_t retval = 0;
@@ -337,22 +333,22 @@ do_operation(const char *operbuf, const size_t *operbufsize,
 
     KFS_ENTER();
 
-    KFS_ASSERT(operbuf != NULL && serverret != NULL && operbufsize != NULL &&
-            resbufsize != NULL);
-    KFS_ASSERT((resbuf == NULL) == (*resbufsize == 0));
+    KFS_ASSERT(arg != NULL && arg->operbuf != NULL);
+    KFS_ASSERT((arg->resbuf == NULL) == (arg->resbufsize == 0));
     retries = MAX_RETRIES;
     for (;;) {
-        ret = kfs_sendrecv(cached_sockfd, operbuf, *operbufsize, headerbuf, 8);
+        ret = kfs_sendrecv(cached_sockfd, arg->operbuf, arg->operbufsize,
+                headerbuf, 8);
         if (ret == 0) {
             /* Network operation was a success. */
             memcpy(&retval, headerbuf, 4);
             retval = ntohl(retval);
-            *serverret = retval - (1 << 31);
+            arg->serverret = retval - (1 << 31);
             memcpy(&result_size, headerbuf + 4, 4);
             result_size = ntohl(result_size);
-            if (*serverret < 0) {
+            if (arg->serverret < 0) {
                 /* The backend of the server failed: exit immediately. */
-                *resbufsize = 0;
+                arg->resbufused = 0;
                 if (result_size != 0) {
                     KFS_WARNING("Result body was sent despite of error.");
                     ret = flush_incoming_data(cached_sockfd, result_size);
@@ -370,11 +366,11 @@ do_operation(const char *operbuf, const size_t *operbufsize,
                         " synchronised or the communication channel is broken."
                         " Hoping a reconnection will fix this...", result_size);
                 ret = 1;
-            } else if (result_size > *resbufsize) {
+            } else if (result_size > arg->resbufsize) {
                 /* Result is too big for given buffer. */
                 KFS_WARNING("Reply from server (%u bytes) is too large for "
                             "supplied buffer (%lu bytes).", result_size,
-                            (unsigned long) *resbufsize);
+                            (unsigned long) arg->resbufsize);
                 /* Try to flush the unexpected pending data. */
                 ret = flush_incoming_data(cached_sockfd, result_size);
                 if (ret == 0) {
@@ -386,11 +382,11 @@ do_operation(const char *operbuf, const size_t *operbufsize,
                 }
             } else if (result_size != 0) {
                 /* Backend operation succeeded: retrieve the body (if any). */
-                ret = kfs_recv(cached_sockfd, resbuf, result_size);
+                ret = kfs_recv(cached_sockfd, arg->resbuf, result_size);
             }
             if (ret == 0) {
                 /* Everything succeeded. */
-                *resbufsize = result_size;
+                arg->resbufused = result_size;
                 KFS_RETURN(0);
             }
             /**
