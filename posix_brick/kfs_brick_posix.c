@@ -579,6 +579,7 @@ kenny_readdir(const char *fusepath, void *buf, fuse_fill_dir_t filler,
     seekdir(dir, offset);
     for (;;) {
         /* Get an entry. */
+        errno = 0;
         de = readdir(dir);
         if (de == NULL) {
             KFS_RETURN(-errno); /* This is probably 0, but that is just fine. */
