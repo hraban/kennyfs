@@ -92,4 +92,4 @@
 #  endif
 #endif
 
-#endif /* _KFS_LOGGING_H */
+#endif

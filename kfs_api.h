@@ -86,6 +86,7 @@ typedef const struct fuse_operations * (* kfs_brick_getfuncs_f)(void);
 typedef void (* kfs_brick_halt_f)(void);
 
 struct kfs_brick_api {
+    /** NULL if the relevant brick takes no arguments. */
     kfs_brick_makearg_f makearg;
     kfs_brick_init_f init;
     kfs_brick_getfuncs_f getfuncs;
@@ -98,4 +99,4 @@ struct kfs_brick_api {
  */
 typedef const struct kfs_brick_api * (* kfs_brick_getapi_f)(void);
 
-#endif /* _KFS_API_H */
+#endif

@@ -20,4 +20,4 @@ char * kfs_bufstrcat(char *buf, const char *part1, const char *part2,
         size_t bufsize);
 char * kfs_strcpy(const char *src);
 
-#endif // _KFS_MISC_H
+#endif

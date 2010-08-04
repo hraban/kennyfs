@@ -11,7 +11,7 @@
 /* Macro is necessary to get dirfd(). */
 #define _BSD_SOURCE
 
-#include "kfs_brick_posix.h"
+#include "posix_brick/kfs_brick_posix.h"
 
 /* <attr/xattr.h> needs this header. */
 #include <sys/types.h>
@@ -233,7 +233,7 @@ kenny_rmdir(const char *fusepath)
 {
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
-    int ret;
+    int ret = 0;
 
     KFS_ENTER();
 
@@ -279,7 +279,7 @@ kenny_rename(const char *from, const char *to)
     char pathbuf_to[PATHBUF_SIZE];
     char *fullpath_from = NULL;
     char *fullpath_to = NULL;
-    int ret;
+    int ret = 0;
 
     KFS_ENTER();
 
@@ -304,7 +304,7 @@ kenny_link(const char *from, const char *to)
     char pathbuf_to[PATHBUF_SIZE];
     char *fullpath_from = NULL;
     char *fullpath_to = NULL;
-    int ret;
+    int ret = 0;
 
     KFS_ENTER();
 
@@ -327,7 +327,7 @@ kenny_chmod(const char *fusepath, mode_t mode)
 {
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
-    int ret;
+    int ret = 0;
 
     KFS_ENTER();
 
@@ -349,7 +349,7 @@ kenny_chown(const char *fusepath, uid_t uid, gid_t gid)
 {
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
-    int ret;
+    int ret = 0;
 
     KFS_ENTER();
 
@@ -579,6 +579,7 @@ kenny_readdir(const char *fusepath, void *buf, fuse_fill_dir_t filler,
     seekdir(dir, offset);
     for (;;) {
         /* Get an entry. */
+        errno = 0;
         de = readdir(dir);
         if (de == NULL) {
             KFS_RETURN(-errno); /* This is probably 0, but that is just fine. */
@@ -706,9 +707,7 @@ private_makearg(char *path)
 
     KFS_ASSERT(path != NULL);
     arg = KFS_MALLOC(sizeof(*arg));
-    if (arg == NULL) {
-        KFS_ERROR("malloc: %s", strerror(errno));
-    } else {
+    if (arg != NULL) {
         arg->path = kfs_strcpy(path);
         if (arg->path == NULL) {
             arg = KFS_FREE(arg);
@@ -794,21 +793,22 @@ kenny_makearg(char *path)
     arg_generic = NULL;
     /* Create a posix block-specific argument. */
     arg_specific = private_makearg(path);
-    if (arg_specific != NULL) {
-        /* Transform that into a generic arg (serialization). */
-        serial_size = kfs_brick_posix_arg2char(&serial_buf, arg_specific);
-        if (serial_buf != NULL) {
-            /*
-             * Wrap serialized argument into generic struct. Error checking
-             * happens later.
-             */
-            arg_generic = kfs_brick_makearg(serial_buf, serial_size);
-            if (arg_generic == NULL) {
-                serial_buf = KFS_FREE(serial_buf);
-            }
-        }
-        private_delarg(arg_specific);
+    if (arg_specific == NULL) {
+        KFS_RETURN(NULL);
     }
+    /* Transform that into a generic arg (serialization). */
+    serial_size = kfs_brick_posix_arg2char(&serial_buf, arg_specific);
+    if (serial_buf != NULL) {
+        /*
+         * Wrap serialized argument into generic struct. Error checking happens
+         * later.
+         */
+        arg_generic = kfs_brick_makearg(serial_buf, serial_size);
+        if (arg_generic == NULL) {
+            serial_buf = KFS_FREE(serial_buf);
+        }
+    }
+    arg_specific = private_delarg(arg_specific);
 
     KFS_RETURN(arg_generic);
 }
