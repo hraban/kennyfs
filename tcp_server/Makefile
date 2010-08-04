@@ -4,7 +4,7 @@ FSLINK ?= ln -fs
 NAME ?= server
 CFLAGS += -fPIC -I..
 CCINCARGS :=
-LINKARGS := `pkg-config fuse --libs` $(wildcard ../kfs_*.o)
+LINKARGS := `pkg-config fuse --libs` $(wildcard ../kfs_*.o) ../minini/minini.o
 OFILES := server.o handlers.o
 
 FULLCC := $(CC) $(CFLAGS) $(CCINCARGS)

@@ -32,6 +32,8 @@
 #include <unistd.h>
 #include <utime.h>
 
+#include "minini/minini.h"
+
 #include "kfs.h"
 #include "kfs_api.h"
 #include "kfs_misc.h"
@@ -45,20 +47,11 @@
                                                     ? (strbuf) \
                                                     : KFS_FREE(strbuf))
 
-/*
- * Types.
+/**
+ * Points to the root of this brick on the real filesystem. This variable is
+ * only modified during initialisation.
  */
-
-struct kfs_brick_posix_arg {
-    char *path;
-};
-
-
-/*
- * Globals and statics.
- */
-
-static struct kfs_brick_posix_arg *myconf;
+static char mountroot[256] = {'\0'};
 
 /*
  * FUSE API.
@@ -74,7 +67,7 @@ kenny_getattr(const char *fusepath, struct stat *stbuf)
 
     KFS_ENTER();
 
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
     }
@@ -117,7 +110,7 @@ kenny_readlink(const char *fusepath, char *buf, size_t size)
     KFS_ENTER();
 
     ret = 0;
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
     }
@@ -143,7 +136,7 @@ kenny_mknod(const char *fusepath, mode_t mode, dev_t dev)
 
     KFS_ENTER();
 
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         ret = -errno;
         KFS_RETURN(-errno);
@@ -166,7 +159,7 @@ kenny_truncate(const char *fusepath, off_t offset)
 
     KFS_ENTER();
 
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
     }
@@ -189,7 +182,7 @@ kenny_open(const char *fusepath, struct fuse_file_info *fi)
     KFS_ENTER();
 
     ret = 0;
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
     }
@@ -215,7 +208,7 @@ kenny_unlink(const char *fusepath)
     KFS_ENTER();
 
     ret = 0;
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
     }
@@ -237,7 +230,7 @@ kenny_rmdir(const char *fusepath)
 
     KFS_ENTER();
 
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
     }
@@ -262,7 +255,7 @@ kenny_symlink(const char *path1, const char *path2)
 
     KFS_ENTER();
 
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, path2, NUMELEM(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, mountroot, path2, NUMELEM(pathbuf));
     ret = symlink(path1, fullpath);
     if (ret == -1) {
         ret = -errno;
@@ -283,9 +276,9 @@ kenny_rename(const char *from, const char *to)
 
     KFS_ENTER();
 
-    fullpath_from = kfs_bufstrcat(pathbuf_from, myconf->path, from,
+    fullpath_from = kfs_bufstrcat(pathbuf_from, mountroot, from,
             NUMELEM(pathbuf_from));
-    fullpath_to = kfs_bufstrcat(pathbuf_to, myconf->path, to,
+    fullpath_to = kfs_bufstrcat(pathbuf_to, mountroot, to,
             NUMELEM(pathbuf_to));
     ret = rename(fullpath_from, fullpath_to);
     if (ret == -1) {
@@ -308,9 +301,9 @@ kenny_link(const char *from, const char *to)
 
     KFS_ENTER();
 
-    fullpath_from = kfs_bufstrcat(pathbuf_from, myconf->path, from,
+    fullpath_from = kfs_bufstrcat(pathbuf_from, mountroot, from,
             NUMELEM(pathbuf_from));
-    fullpath_to = kfs_bufstrcat(pathbuf_to, myconf->path, to,
+    fullpath_to = kfs_bufstrcat(pathbuf_to, mountroot, to,
             NUMELEM(pathbuf_to));
     ret = link(fullpath_from, fullpath_to);
     if (ret == -1) {
@@ -331,7 +324,7 @@ kenny_chmod(const char *fusepath, mode_t mode)
 
     KFS_ENTER();
 
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
     }
@@ -353,7 +346,7 @@ kenny_chown(const char *fusepath, uid_t uid, gid_t gid)
 
     KFS_ENTER();
 
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
     }
@@ -426,7 +419,7 @@ kenny_setxattr(const char *fusepath, const char *name, const char *value, size_t
     KFS_ENTER();
 
     ret = 0;
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
     }
@@ -448,7 +441,7 @@ kenny_getxattr(const char *fusepath, const char *name, char *value, size_t size)
 
     KFS_ENTER();
 
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
     }
@@ -470,7 +463,7 @@ kenny_listxattr(const char *fusepath, char *list, size_t size)
 
     KFS_ENTER();
 
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
     }
@@ -492,7 +485,7 @@ kenny_removexattr(const char *fusepath, const char *name)
 
     KFS_ENTER();
 
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         ret = -errno;
     }
@@ -519,7 +512,7 @@ kenny_mkdir(const char *fusepath, mode_t mode)
 
     KFS_ENTER();
 
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
     }
@@ -542,7 +535,7 @@ kenny_opendir(const char *fusepath, struct fuse_file_info *fi)
 
     KFS_ENTER();
 
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
     }
@@ -636,7 +629,7 @@ kenny_utimens(const char *fusepath, const struct timespec tvnano[2])
     KFS_ENTER();
 
     ret = 0;
-    fullpath = kfs_bufstrcat(pathbuf, myconf->path, fusepath, NUMELEM(pathbuf));
+    fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
     }
@@ -695,146 +688,31 @@ static const struct fuse_operations kenny_oper = {
 };
 
 /**
- * Create a new arg struct, specific for the POSIX brick.
- * TODO: could use a better name.
- */
-static struct kfs_brick_posix_arg *
-private_makearg(char *path)
-{
-    struct kfs_brick_posix_arg *arg = NULL;
-
-    KFS_ENTER();
-
-    KFS_ASSERT(path != NULL);
-    arg = KFS_MALLOC(sizeof(*arg));
-    if (arg != NULL) {
-        arg->path = kfs_strcpy(path);
-        if (arg->path == NULL) {
-            arg = KFS_FREE(arg);
-            arg = NULL;
-        }
-    }
-
-    KFS_RETURN(arg);
-}
-
-/**
- * Free a POSIX brick arg struct.
- */
-static struct kfs_brick_posix_arg *
-private_delarg(struct kfs_brick_posix_arg *arg)
-{
-    KFS_ENTER();
-
-    KFS_ASSERT(arg != NULL && arg->path != NULL);
-    arg->path = KFS_FREE(arg->path);
-    arg = KFS_FREE(arg);
-
-    KFS_RETURN(arg);
-}
-
-/**
- * Unserialize an argument.
- */
-static struct kfs_brick_posix_arg *
-kfs_brick_posix_char2arg(char *buf, size_t len)
-{
-    KFS_NASSERT((void) len);
-
-    struct kfs_brick_posix_arg *arg = NULL;
-
-    KFS_ENTER();
-
-    KFS_ASSERT(buf != NULL && len > 0);
-    KFS_ASSERT(buf[len - 1] == '\0');
-    arg = private_makearg(buf);
-
-    KFS_RETURN(arg);
-}
-
-/**
- * Serialize an argument to a character array. Returns the size of the new
- * buffer, which must, eventually, be freed. Returns the size of the buffer on
- * success, sets the buffer to NULL on failure.
- */
-static size_t
-kfs_brick_posix_arg2char(char **buf, const struct kfs_brick_posix_arg *arg)
-{
-    ssize_t len = 0;
-
-    KFS_ENTER();
-
-    KFS_ASSERT(arg != NULL && buf != NULL);
-    len = strlen(arg->path) + 1; /* +1 for the additional '\0' byte. */
-    *buf = KFS_MALLOC(len);
-    if (*buf != NULL) {
-        *buf = memcpy(*buf, arg->path, len);
-    }
-
-    KFS_RETURN(len);
-}
-
-/**
- * Initialize a new argument struct. Returns NULL on error, pointer to struct on
- * success. That pointer must eventually be freed. This function is useful for
- * other bricks / frontends to create arguments compatible with this brick.
- */
-static struct kfs_brick_arg *
-kenny_makearg(char *path)
-{
-    size_t serial_size = 0;
-    char *serial_buf = NULL;
-    struct kfs_brick_posix_arg *arg_specific = NULL;
-    struct kfs_brick_arg *arg_generic = NULL;
-
-    KFS_ENTER();
-
-    KFS_ASSERT(path != NULL);
-    arg_generic = NULL;
-    /* Create a posix block-specific argument. */
-    arg_specific = private_makearg(path);
-    if (arg_specific == NULL) {
-        KFS_RETURN(NULL);
-    }
-    /* Transform that into a generic arg (serialization). */
-    serial_size = kfs_brick_posix_arg2char(&serial_buf, arg_specific);
-    if (serial_buf != NULL) {
-        /*
-         * Wrap serialized argument into generic struct. Error checking happens
-         * later.
-         */
-        arg_generic = kfs_brick_makearg(serial_buf, serial_size);
-        if (arg_generic == NULL) {
-            serial_buf = KFS_FREE(serial_buf);
-        }
-    }
-    arg_specific = private_delarg(arg_specific);
-
-    KFS_RETURN(arg_generic);
-}
-
-/**
  * Global initialization.
  */
 static int
-kenny_init(struct kfs_brick_arg *generic)
+kenny_init(const char *conffile, const char *section)
 {
+    const size_t bufsize = NUMELEM(mountroot);
     int ret = 0;
 
     KFS_ENTER();
 
-    KFS_ASSERT(generic != NULL);
-    KFS_ASSERT(generic->payload != NULL && generic->payload_size > 0);
-    KFS_ASSERT(generic->num_next_bricks == 0);
-    myconf = kfs_brick_posix_char2arg(generic->payload, generic->payload_size);
-    if (myconf != NULL) {
-        ret = 0;
-    } else {
-        KFS_ERROR("Initializing POSIX brick failed.");
-        ret = -1;
+    KFS_ASSERT(section != NULL && conffile != NULL);
+    ret = ini_gets(section, "path", "", mountroot, bufsize, conffile);
+    if (ret == 0) {
+        KFS_ERROR("Missing value `path' in section [%s] of file %s.", section,
+                conffile);
+        KFS_RETURN(-1);
+    } else if (ret == bufsize - 1) {
+        /* TODO: Verify (test) if this conditional is correct. */
+        KFS_ERROR("Value of `path' option in section [%s] of file %s too long.",
+                section, conffile);
+        KFS_RETURN(-1);
     }
+    KFS_INFO("Started POSIX brick: mirroring `%s'.", mountroot);
 
-    KFS_RETURN(ret);
+    KFS_RETURN(0);
 }
 
 /*
@@ -856,13 +734,12 @@ kenny_halt(void)
 {
     KFS_ENTER();
 
-    myconf = private_delarg(myconf);
+    mountroot[0] = '\0';
 
     KFS_RETURN();
 }
 
 static const struct kfs_brick_api kenny_api = {
-    .makearg = kenny_makearg,
     .init = kenny_init,
     .getfuncs = kenny_getfuncs,
     .halt = kenny_halt,

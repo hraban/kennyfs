@@ -12,7 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "minIni/minIni.h"
+#include "minini/minini.h"
 
 #include "kfs.h"
 #include "kfs_api.h"
@@ -38,15 +38,6 @@ enum {
     BRICK_TCP,
     _BRICK_NUM,
 };
-
-/**
- * Function that prepares an argument (first argument) for a brick. The second
- * argument is a struct that is specific for this brick but that is serialized
- * as a generic argument (part of the kennyfs API).
- */
-typedef int (* brick_preparer_t) (struct kfs_brick_arg **,
-                                  const struct kfs_brick_api *,
-                                  const char *);
 
 const char * const BRICK_NAMES[] = {
     [BRICK_PASS] = "pass",
@@ -83,10 +74,10 @@ void *lib_handle = NULL;
  * returned. On error the pointer will point to NULL and the return value is
  * unspecified.
  */
-static unsigned int
+static uint_t
 get_brick_path(const char brickname[], const char **brickpath)
 {
-    unsigned int i = 0;
+    uint_t i = 0;
 
     KFS_ENTER();
 
@@ -140,96 +131,8 @@ kenny_opt_proc(void *data, const char *arg, int key, struct fuse_args *outargs)
 }
 
 /**
- * Prepare an argument for the passthrough backend. That backend takes no
- * arguments so this function always sets the arg to NULL.
- */
-static int
-prepare_pass_backend(struct kfs_brick_arg **arg,
-                     const struct kfs_brick_api *api,
-                     const char *conffile)
-{
-    (void) api;
-    (void) conffile;
-
-    KFS_ENTER();
-
-    *arg = NULL;
-
-    KFS_RETURN(0);
-}
-
-/**
- * Prepare an argument for the POSIX backend. Returns 0 on success, -1 on
- * failure.
- */
-static int
-prepare_posix_backend(struct kfs_brick_arg **arg,
-                      const struct kfs_brick_api *api,
-                      const char *conffile)
-{
-    char path[256] = {'\0'};
-    int ret = 0;
-
-    KFS_ENTER();
-
-    KFS_ASSERT(api != NULL && arg != NULL && conffile != NULL);
-    ret = ini_gets("brick_root", "path", "", path, NUMELEM(path), conffile);
-    if (ret == 0) {
-        KFS_ERROR("Did not find path for POSIX brick in configuration.");
-        KFS_RETURN(-1);
-    } else {
-        /* Prepare for initialization of the brick: construct argument. */
-        *arg = api->makearg(path);
-        KFS_RETURN(0);
-    }
-
-    KFS_ASSERT(0);
-    KFS_RETURN(-1);
-}
-
-/**
- * Prepare an argument for the TCP backend. Returns 0 on success, -1 on
- * failure.
- */
-static int
-prepare_tcp_backend(struct kfs_brick_arg **arg,
-                    const struct kfs_brick_api *api,
-                    const char *conffile)
-{
-    char hostname[256] = {'\0'};
-    char port[8] = {'\0'};
-    int ret1 = 0;
-    int ret2 = 0;
-
-    KFS_ENTER();
-
-    KFS_ASSERT(api != NULL && conffile != NULL);
-    ret1 = ini_gets("brick_root", "hostname", "", hostname, NUMELEM(hostname),
-            conffile);
-    ret2 = ini_gets("brick_root", "port", "", port, NUMELEM(port), conffile);
-    if (ret1 != 0 && ret2 != 0) {
-        /* Prepare for initialization of the brick: construct its argument. */
-        *arg = api->makearg(hostname, port);
-        KFS_RETURN(0);
-    } else {
-        KFS_ERROR("Did not find hostname and port for TCP brick in "
-                  "configuration.");
-        KFS_RETURN(-1);
-    }
-
-    KFS_ASSERT(0);
-    KFS_RETURN(-1);
-}
-
-const brick_preparer_t brick_preparers[] = {
-    [BRICK_PASS] = prepare_pass_backend,
-    [BRICK_POSIX] = prepare_posix_backend,
-    [BRICK_TCP] = prepare_tcp_backend,
-};
-
-/**
  * Get a pointer to the API for the root brick and initialise all bricks in the
- * chain.
+ * chain. TODO: Actually only the root is initialised for now, should be fixed.
  */
 static const struct kfs_brick_api *
 get_root_brick(const char *conffile)
@@ -238,9 +141,7 @@ get_root_brick(const char *conffile)
     kfs_brick_getapi_f brick_getapi_f = NULL;
     const struct kfs_brick_api *brick_api = NULL;
     const char *brickpath = NULL;
-    brick_preparer_t preparer = NULL;
-    struct kfs_brick_arg *arg = NULL;
-    unsigned int brick = 0;
+    uint_t brick = 0;
     int ret = 0;
 
     KFS_ENTER();
@@ -270,21 +171,10 @@ get_root_brick(const char *conffile)
         KFS_RETURN(NULL);
     }
     brick_api = brick_getapi_f();
-    preparer = brick_preparers[brick];
-    ret = preparer(&arg, brick_api, conffile);
+    ret = brick_api->init(conffile, "brick_root");
     if (ret == -1) {
-        KFS_ERROR("Preparing brick failed.");
+        KFS_ERROR("Preparing brick failed, could not start: code %d.", ret);
         KFS_RETURN(NULL);
-    }
-    /* Arguments ready: now initialize the brick. */
-    ret = brick_api->init(arg);
-    if (ret != 0) {
-        KFS_ERROR("Brick could not start: code %d.", ret);
-        brick_api = NULL;
-    }
-    /* Initialisation is over, free the argument. */
-    if (arg != NULL) {
-        arg = kfs_brick_delarg(arg);
     }
 
     KFS_RETURN(brick_api);

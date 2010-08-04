@@ -1,7 +1,7 @@
-/*  Glue functions for the minIni library, based on the C/C++ stdio library
+/*  Glue functions for the minini library, based on the C/C++ stdio library
  *
  *  Or better said: this file contains macros that maps the function interface
- *  used by minIni to the standard C/C++ file I/O functions.
+ *  used by minini to the standard C/C++ file I/O functions.
  *
  *  Copyright (c) ITB CompuPhase, 2008-2009
  *
@@ -17,7 +17,7 @@
  *  License for the specific language governing permissions and limitations
  *  under the License.
  *
- *  Version: $Id: minGlue.h 24 2009-05-06 08:01:53Z thiadmer.riemersma $
+ *  Version: $Id: minglue.h 24 2009-05-06 08:01:53Z thiadmer.riemersma $
  */
 
 /* map required file I/O to the standard C library */

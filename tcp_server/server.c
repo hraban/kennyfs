@@ -25,13 +25,13 @@
 #include "tcp_server/handlers.h"
 
 /** The size of per-client read and write buffers. */
-#define BUF_LEN 100000
+#define BUF_LEN 500000
 
 /**
  * Configuration variables.
  */
 struct kenny_conf {
-    char *path;
+    char *conffile;
     char *brick;
     char *port;
 };
@@ -585,37 +585,6 @@ run_daemon(char *port)
 }
 
 /**
- * Start up the POSIX backend. Returns 0 on success, -1 on error.
- */
-static int
-prepare_posix_backend(const struct kfs_brick_api *api, char *path)
-{
-    struct kfs_brick_arg *arg = NULL;
-    int ret = 0;
-
-    KFS_ENTER();
-
-    KFS_ASSERT(api != NULL && path != NULL);
-    /* Prepare for initialization of the brick: construct its argument. */
-    arg = api->makearg(path);
-    if (arg == NULL) {
-        KFS_ERROR("Preparing brick failed.");
-        ret = -1;
-    } else {
-        /* Arguments ready: now initialize the brick. */
-        ret = api->init(arg);
-        if (ret != 0) {
-            KFS_ERROR("Brick could not start: code %d.", ret);
-            ret = -1;
-        }
-        /* Initialization is over, free the argument. */
-        arg = kfs_brick_delarg(arg);
-    }
-
-    KFS_RETURN(ret);
-}
-
-/**
  * Send raw message (array of chars) to given client. Returns -1 if the buffer
  * is full, 0 on success. Puts the message in a buffer, actual sending happens
  * when the connection with the client is ready for it (and errors there are not
@@ -677,10 +646,10 @@ main(int argc, char *argv[])
     ret = 0;
     KFS_INFO("Starting KennyFS version %s.", KFS_VERSION);
     handlers = get_handlers();
-    /* Parse the command line. */
+    /* Parse the command line. TODO: more flexible configuration. */
     if (argc == 4) {
         conf.brick = argv[1];
-        conf.path = argv[2];
+        conf.conffile = argv[2];
         conf.port = argv[3];
     } else {
         KFS_ERROR("Error parsing commandline.");
@@ -714,15 +683,17 @@ main(int argc, char *argv[])
         }
     }
     if (ret == 0) {
-        ret = prepare_posix_backend(brick_api, conf.path);
-        if (ret == 0) {
-            /* Run the brick and start the network daemon. */
-            kenny_oper = brick_api->getfuncs();
-            init_handlers(kenny_oper);
-            ret = run_daemon(conf.port);
-            /* Clean everything up. */
-            brick_api->halt();
+        ret = brick_api->init(conf.conffile, "brick_root");
+        if (ret != 0) {
+            KFS_ERROR("Brick could not start: code %d.", ret);
+            KFS_RETURN(-1);
         }
+        /* Run the brick and start the network daemon. */
+        kenny_oper = brick_api->getfuncs();
+        init_handlers(kenny_oper);
+        ret = run_daemon(conf.port);
+        /* Clean everything up. */
+        brick_api->halt();
         dlclose(lib_handle);
     }
     if (ret == 0) {

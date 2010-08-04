@@ -1,4 +1,4 @@
-/*  minIni - Multi-Platform INI file parser, suitable for embedded systems
+/*  minini - Multi-Platform INI file parser, suitable for embedded systems
  *
  *  Copyright (c) ITB CompuPhase, 2008-2009
  *
@@ -14,12 +14,12 @@
  *  License for the specific language governing permissions and limitations
  *  under the License.
  *
- *  Version: $Id: minIni.h 24 2009-05-06 08:01:53Z thiadmer.riemersma $
+ *  Version: $Id: minini.h 24 2009-05-06 08:01:53Z thiadmer.riemersma $
  */
 #ifndef MININI_H
 #define MININI_H
 
-#include "minGlue.h"
+#include "minglue.h"
 
 #if (defined _UNICODE || defined __UNICODE__ || defined UNICODE) && !defined INI_ANSIONLY
   #include <tchar.h>
@@ -49,11 +49,11 @@ int  ini_getkey(const TCHAR *Section, int idx, TCHAR *Buffer, int BufferSize, co
 #if defined __cplusplus
 #include <string>
 
-/* The C++ class in minIni.h was contributed by Steven Van Ingelgem. */
-class minIni
+/* The C++ class in minini.h was contributed by Steven Van Ingelgem. */
+class minini
 {
 public:
-  minIni(const std::string& filename) : iniFilename(filename)
+  minini(const std::string& filename) : iniFilename(filename)
     { }
 
   long getl(const std::string& Section, const std::string& Key, long DefValue=0) const

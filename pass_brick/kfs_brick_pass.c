@@ -548,9 +548,10 @@ static const struct fuse_operations handlers = {
  * Global initialization.
  */
 static int
-kfs_pass_init(struct kfs_brick_arg *generic)
+kfs_pass_init(const char *conffile, const char *section)
 {
-    (void) generic;
+    (void) conffile;
+    (void) section;
 
     KFS_ENTER();
 
@@ -580,21 +581,11 @@ kfs_pass_halt(void)
 }
 
 static const struct kfs_brick_api kfs_pass_api = {
-    .makearg = NULL,
     .init = kfs_pass_init,
     .getfuncs = kfs_pass_getfuncs,
     .halt = kfs_pass_halt,
 };
 
-/*
- * Public functions.
- */
-
-/**
- * Get the KennyFS API: initialiser, FUSE API getter and cleaner. This function
- * has the generic KennyFS backend name expected by frontends. Do not put this
- * in the header-file but extract it with dynamic linking.
- */
 const struct kfs_brick_api *
 kfs_brick_getapi(void)
 {

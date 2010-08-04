@@ -7,7 +7,7 @@ CCINCARGS :=
 LINKARGS := `pkg-config fuse --libs`
 BRICKS := $(patsubst %_brick/,%,$(wildcard *_brick/))
 CLEANBRICKS := $(patsubst %,%_clean,$(BRICKS))
-OFILES := $(patsubst %.c,%.o,$(wildcard kfs_*.c)) minIni/minIni.o
+OFILES := $(patsubst %.c,%.o,$(wildcard kfs_*.c)) minini/minini.o
 
 FULLCC := $(CC) $(CFLAGS) $(CCINCARGS)
 FULLLINK := $(LINKER) $(LINKARGS)

@@ -31,7 +31,7 @@ static const struct fuse_operations *oper = NULL;
  * readdir(). If during readdir() it turns out more space is needed, more space
  * will be allocated dynamically.
  */
-static const unsigned int READDIRBUF_SIZE = 10000;
+static const unsigned int READDIRBUF_SIZE = 1000000;
 
 /** State information used by readdir. */
 struct _readdir_fh_t {

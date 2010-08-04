@@ -22,7 +22,7 @@
 static const unsigned int MAX_RETRIES = 5;
 /** Number of seconds to wait after failed attempt before reconnecting. */
 static const unsigned int RETRY_DELAY = 3;
-static struct kfs_brick_tcp_arg myconf;
+static struct conn_info myconf = {.hostname = NULL, .port = NULL};
 static int cached_sockfd = 0;
 /** Buffer that is intended for write-only operations. Reads are undefined. */
 static char devnull[1024];
@@ -195,7 +195,7 @@ sendrecv_sop(int sockfd)
  * If all potential sockets caused critical errors, -1 is returned.
  */
 static int
-connect_to_server(const struct kfs_brick_tcp_arg *conf)
+connect_to_server(const struct conn_info *conf)
 {
     struct addrinfo hints;
     struct addrinfo *servinfo = NULL;
@@ -257,7 +257,7 @@ connect_to_server(const struct kfs_brick_tcp_arg *conf)
  */
 static int
 refresh_socket(int sockfd, unsigned int *retries,
-               const struct kfs_brick_tcp_arg *conf)
+               const struct conn_info *conf)
 {
     int ret = 0;
 
@@ -432,7 +432,7 @@ do_operation(struct serialised_operation *arg)
  * Initialise the module by storing a local copy of the configuration.
  */
 int
-init_connection(const struct kfs_brick_tcp_arg *conf)
+init_connection(const struct conn_info *conf)
 {
     unsigned int retries = 0;
     int sopret = 0;

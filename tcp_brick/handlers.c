@@ -32,7 +32,7 @@
  * Size of the buffer that will hold the reply (from the server) to a readdir
  * operation.
  */
-const size_t READDIR_BUFSIZE = 100000;
+const size_t READDIR_BUFSIZE = 1000000;
 /**
  * Worker thread that handles the connection with the server. It passes
  * serialised operations over to the connection module and waits for their

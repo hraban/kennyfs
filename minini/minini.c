@@ -1,4 +1,4 @@
-/*  minIni - Multi-Platform INI file parser, suitable for embedded systems
+/*  minini - Multi-Platform INI file parser, suitable for embedded systems
  *
  *  These routines are in part based on the article "Multiplatform .INI Files"
  *  by Joseph J. Graf in the March 1994 issue of Dr. Dobb's Journal.
@@ -17,7 +17,7 @@
  *  License for the specific language governing permissions and limitations
  *  under the License.
  *
- *  Version: $Id: minIni.c 24 2009-05-06 08:01:53Z thiadmer.riemersma $
+ *  Version: $Id: minini.c 24 2009-05-06 08:01:53Z thiadmer.riemersma $
  */
 
 #if (defined _UNICODE || defined __UNICODE__ || defined UNICODE) && !defined MININI_ANSI
@@ -29,7 +29,7 @@
 # endif
 #endif
 
-#include "minIni.h"
+#include "minini.h"
 #if defined NDEBUG
   #define assert(e)
 #else
@@ -39,7 +39,7 @@
 #if !defined __T
   #include <string.h>
   #include <stdlib.h>
-  /* definition of TCHAR already in minIni.h */
+  /* definition of TCHAR already in minini.h */
   #define __T(s)    s
   #define _tcscat   strcat
   #define _tcschr   strchr
