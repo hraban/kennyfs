@@ -1,9 +1,15 @@
 #ifndef KFS_LOADBRICK_H
 #define KFS_LOADBRICK_H
 
-#include "kfs_api.h"
+#include <fuse.h>
 
-struct kfs_brick_api * get_root_brick(const char *conffile);
-void del_root_brick(struct kfs_brick_api *brick_api);
+struct kfs_loadbrick {
+    const struct fuse_operations *oper;
+    /** Session data used to keep track of (and free) resources. */
+    void *priv;
+};
+
+int get_root_brick(const char *conffile, struct kfs_loadbrick *brick);
+void del_root_brick(struct kfs_loadbrick *brick);
 
 #endif

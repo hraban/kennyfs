@@ -94,10 +94,9 @@ main_(int argc, char *argv[])
 {
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
     struct kenny_conf conf;
+    struct kfs_loadbrick brick;
     int ret = 0;
-    const struct fuse_operations *kenny_oper = NULL;
     const char *kfsconf = NULL;
-    struct kfs_brick_api *brick_api = NULL;
 
     KFS_ENTER();
 
@@ -114,16 +113,15 @@ main_(int argc, char *argv[])
     } else {
         kfsconf = KFSCONF_DEFAULT_PATH;
     }
-    brick_api = get_root_brick(kfsconf);
-    if (brick_api == NULL) {
+    ret = get_root_brick(kfsconf, &brick);
+    if (ret == -1) {
         fuse_opt_free_args(&args);
         KFS_RETURN(-1);
     }
     /* Run the brick and start FUSE. */
-    kenny_oper = brick_api->getfuncs();
-    ret = fuse_main(args.argc, args.argv, kenny_oper, NULL);
+    ret = fuse_main(args.argc, args.argv, brick.oper, NULL);
     /* Clean everything up. */
-    del_root_brick(brick_api);
+    del_root_brick(&brick);
     fuse_opt_free_args(&args);
 
     KFS_RETURN(ret);
