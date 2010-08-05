@@ -12,6 +12,23 @@
 #include "kfs.h"
 
 /**
+ * Platform dependant record that contains all necessary information to identify
+ * a dynamically loaded resource. The frontend calls an init-like library
+ * function with just a const char * (the name of the desired brick), that init
+ * function returns a pointer to a struct kfs_brick_api (see below). Once done
+ * with the brick, the frontend calls a cleanup-like function in that same
+ * library with as argument that pointer from init(), which then releases all
+ * resources. This struct, as part of struct kfs_brick_api, is evidently also
+ * passed and can be used to keep track of what resources need to be freed.
+ *
+ * Since this software is currently only tested on linux, only the dlopen()
+ * interface is used (void *).
+ */
+struct kfs_brick_passport {
+    void *handle;
+};
+
+/**
  * Function that prepares the brick for operation. The first argument is the
  * path to the configuration file, the second is the section from which this
  * brick is being loaded. They are intended for use with the minini library
@@ -27,6 +44,8 @@ struct kfs_brick_api {
     kfs_brick_init_f init;
     kfs_brick_getfuncs_f getfuncs;
     kfs_brick_halt_f halt;
+    /** This element is to be set by the user of the dynamic library. */
+    struct kfs_brick_passport passport;
 };
 
 /**
