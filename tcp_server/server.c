@@ -20,6 +20,7 @@
 
 #include "kfs.h"
 #include "kfs_api.h"
+#include "kfs_loadbrick.h"
 #include "kfs_misc.h"
 #include "tcp_brick/tcp_brick.h"
 #include "tcp_server/handlers.h"
@@ -628,17 +629,17 @@ send_msg(client_t c, const char *msg, size_t msglen)
     KFS_RETURN(0);
 }
 
+/**
+ * "Real" main() function, actual main() is just a wrapper for debugging the
+ * return value.
+ */
 int
-main(int argc, char *argv[])
+main_(int argc, char *argv[])
 {
     struct kenny_conf conf;
+    struct kfs_loadbrick brick;
     uint32_t val = 0;
     int ret = 0;
-    const struct kfs_brick_api *brick_api = NULL;
-    const struct fuse_operations *kenny_oper = NULL;
-    kfs_brick_getapi_f brick_getapi_f = NULL;
-    void *lib_handle = NULL;
-    char *errorstr = NULL;
 
     KFS_ENTER();
 
@@ -653,49 +654,35 @@ main(int argc, char *argv[])
         conf.port = argv[3];
     } else {
         KFS_ERROR("Error parsing commandline.");
-        ret = -1;
+        KFS_RETURN(-1);
     }
-    if (ret == 0) {
-        /* 
-         * Prepare buffer that is used in case a non-implemented operation is
-         * requested.
-         */
-        val = htonl(ENOSYS);
-        memcpy(MSG_NOSYS, &val, 4);
-        val = htonl(0);
-        memcpy(MSG_NOSYS + 4, &val, 4);
-        /* Load the brick. */
-        lib_handle = dlopen(conf.brick, RTLD_NOW | RTLD_LOCAL);
-        if (lib_handle != NULL) {
-            brick_getapi_f = dlsym(lib_handle, "kfs_brick_getapi");
-            if (brick_getapi_f != NULL) {
-                brick_api = brick_getapi_f();
-            } else {
-                dlclose(lib_handle);
-                ret = -1;
-            }
-        } else {
-            ret = -1;
-        }
-        errorstr = dlerror();
-        if (errorstr != NULL) {
-            KFS_ERROR("Loading brick failed: %s", errorstr);
-        }
+    /* 
+     * Prepare buffer that is used in case a non-implemented operation is
+     * requested.
+     */
+    val = htonl(ENOSYS);
+    memcpy(MSG_NOSYS, &val, 4);
+    val = htonl(0);
+    memcpy(MSG_NOSYS + 4, &val, 4);
+    /* Run the brick and start the network daemon. */
+    ret = get_root_brick(conf.conffile, &brick);
+    if (ret == -1) {
+        KFS_RETURN(-1);
     }
-    if (ret == 0) {
-        ret = brick_api->init(conf.conffile, "brick_root");
-        if (ret != 0) {
-            KFS_ERROR("Brick could not start: code %d.", ret);
-            KFS_RETURN(-1);
-        }
-        /* Run the brick and start the network daemon. */
-        kenny_oper = brick_api->getfuncs();
-        init_handlers(kenny_oper);
-        ret = run_daemon(conf.port);
-        /* Clean everything up. */
-        brick_api->halt();
-        dlclose(lib_handle);
-    }
+    init_handlers(brick.oper);
+    ret = run_daemon(conf.port);
+    /* Clean everything up. */
+    del_root_brick(&brick);
+
+    KFS_RETURN(0);
+}
+
+int
+main(int argc, char *argv[])
+{
+    int ret = 0;
+
+    ret = main_(argc, argv);
     if (ret == 0) {
         KFS_INFO("KennyFS exited succesfully.");
         exit(EXIT_SUCCESS);
@@ -704,5 +691,5 @@ main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    KFS_RETURN(EXIT_FAILURE);
+    return -1;
 }

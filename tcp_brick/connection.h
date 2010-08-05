@@ -26,10 +26,6 @@ struct serialised_operation {
     size_t resbufsize;
     size_t resbufused;
     int serverret;
-    int clientret;
-    /* Signal the caller that the operation is done. */
-    pthread_mutex_t done_mutex;
-    pthread_cond_t done_cond;
 };
 
 int init_connection(const struct conn_info *conf);
