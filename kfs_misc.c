@@ -5,6 +5,8 @@
 /* For sleep(). */
 #include <unistd.h>
 
+#include "minini/minini.h"
+
 #include "kfs_misc.h"
 
 #include "kfs.h"
@@ -118,4 +120,46 @@ kfs_strcpy(const char *src)
     }
 
     KFS_RETURN(dest);
+}
+
+/**
+ * Extract a key from the configuration file into a freshly allocated buffer.
+ * Returns NULL if there is no such key (or no such section or configuration
+ * file, or no memory, etc), returns a pointer to the buffer on success. This
+ * pointer should eventually be freed with KFS_FREE().
+ */
+char *
+kfs_ini_gets(const char *conffile, const char *section, const char *key)
+{
+    char *buf = NULL;
+    char *newbuf = NULL;
+    size_t buflen = 0;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    buflen = 256;
+    buf = KFS_MALLOC(buflen);
+    if (buf == NULL) {
+        KFS_RETURN(NULL);
+    }
+    for (;;) {
+        ret = ini_gets(section, key, "", buf, buflen, conffile);
+        if (ret == 0) {
+            buf = KFS_FREE(buf);
+            KFS_RETURN(NULL);
+        } else if (ret < buflen - 1) {
+            KFS_RETURN(buf);
+        }
+        buflen *= 2;
+        newbuf = KFS_REALLOC(buf, buflen);
+        if (newbuf == NULL) {
+            buf = KFS_FREE(buf);
+            KFS_RETURN(NULL);
+        } else {
+            buf = newbuf;
+        }
+    }
+
+    KFS_RETURN(NULL);
 }
