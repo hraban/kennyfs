@@ -10,6 +10,6 @@ struct kfs_loadbrick {
 };
 
 int get_root_brick(const char *conffile, struct kfs_loadbrick *brick);
-void del_root_brick(struct kfs_loadbrick *brick);
+struct kfs_loadbrick * del_root_brick(struct kfs_loadbrick *brick);
 
 #endif

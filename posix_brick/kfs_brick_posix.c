@@ -691,14 +691,19 @@ static const struct fuse_operations kenny_oper = {
  * Global initialization.
  */
 static int
-kenny_init(const char *conffile, const char *section)
+kenny_init(const char *conffile, const char *section, const struct
+        fuse_operations * const subvolumes[])
 {
     const size_t bufsize = NUMELEM(mountroot);
     int ret = 0;
 
     KFS_ENTER();
 
-    KFS_ASSERT(section != NULL && conffile != NULL);
+    KFS_ASSERT(section != NULL && conffile != NULL && subvolumes != NULL);
+    if (subvolumes[0] != NULL) {
+        KFS_ERROR("Brick `%s' (POSIX) takes no subvolumes.", section);
+        KFS_RETURN(-1);
+    }
     ret = ini_gets(section, "path", "", mountroot, bufsize, conffile);
     if (ret == 0) {
         KFS_ERROR("Missing value `path' in section [%s] of file %s.", section,
@@ -710,7 +715,7 @@ kenny_init(const char *conffile, const char *section)
                 section, conffile);
         KFS_RETURN(-1);
     }
-    KFS_INFO("Started POSIX brick: mirroring `%s'.", mountroot);
+    KFS_INFO("Started POSIX brick `%s': mirroring `%s'.", section, mountroot);
 
     KFS_RETURN(0);
 }

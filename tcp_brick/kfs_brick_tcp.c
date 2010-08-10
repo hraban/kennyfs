@@ -25,7 +25,8 @@ char port[8] = {'\0'};
  * Global initialization.
  */
 static int
-kenny_init(const char *conffile, const char *section)
+kenny_init(const char *conffile, const char *section,
+        const struct fuse_operations * const subvolumes[])
 {
     const size_t hostname_size = NUMELEM(hostname);
     const size_t port_size = NUMELEM(port);
@@ -35,7 +36,11 @@ kenny_init(const char *conffile, const char *section)
 
     KFS_ENTER();
 
-    KFS_ASSERT(section != NULL && conffile != NULL);
+    KFS_ASSERT(section != NULL && conffile != NULL && subvolumes != NULL);
+    if (subvolumes[0] != NULL) {
+        KFS_ERROR("Brick %s (TCP) takes no subvolumes.", section);
+        KFS_RETURN(-1);
+    }
     ret1 = ini_gets("brick_root", "hostname", "", hostname, hostname_size,
             conffile);
     ret2 = ini_gets("brick_root", "port", "", port, port_size, conffile);

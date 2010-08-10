@@ -7,6 +7,7 @@
 
 #include "pass_brick/kfs_brick_pass.h"
 
+#include <errno.h>
 #include <fuse.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -30,6 +31,9 @@ handle_getattr(const char *path, struct stat *stbuf)
 
     KFS_ENTER();
 
+    if (oper->getattr == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->getattr(path, stbuf);
 
     KFS_RETURN(ret);
@@ -42,6 +46,9 @@ handle_readlink(const char *path, char *buf, size_t size)
 
     KFS_ENTER();
 
+    if (oper->readlink == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->readlink(path, buf, size);
 
     KFS_RETURN(ret);
@@ -54,6 +61,9 @@ handle_mknod(const char *path, mode_t mode, dev_t dev)
 
     KFS_ENTER();
 
+    if (oper->mknod == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->mknod(path, mode, dev);
 
     KFS_RETURN(ret);
@@ -66,6 +76,9 @@ handle_truncate(const char *path, off_t offset)
 
     KFS_ENTER();
 
+    if (oper->truncate == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->truncate(path, offset);
 
     KFS_RETURN(ret);
@@ -78,6 +91,9 @@ handle_open(const char *path, struct fuse_file_info *fi)
 
     KFS_ENTER();
 
+    if (oper->open == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->open(path, fi);
 
     KFS_RETURN(ret);
@@ -90,6 +106,9 @@ handle_unlink(const char *path)
 
     KFS_ENTER();
 
+    if (oper->unlink == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->unlink(path);
 
     KFS_RETURN(ret);
@@ -102,6 +121,9 @@ handle_rmdir(const char *path)
 
     KFS_ENTER();
 
+    if (oper->rmdir == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->rmdir(path);
 
     KFS_RETURN(ret);
@@ -117,6 +139,9 @@ handle_symlink(const char *path1, const char *path2)
 
     KFS_ENTER();
 
+    if (oper->symlink == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->symlink(path1, path2);
 
     KFS_RETURN(ret);
@@ -129,6 +154,9 @@ handle_rename(const char *from, const char *to)
 
     KFS_ENTER();
 
+    if (oper->rename == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->rename(from, to);
 
     KFS_RETURN(ret);
@@ -141,6 +169,9 @@ handle_link(const char *from, const char *to)
 
     KFS_ENTER();
 
+    if (oper->link == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->link(from, to);
 
     KFS_RETURN(ret);
@@ -153,6 +184,9 @@ handle_chmod(const char *path, mode_t mode)
 
     KFS_ENTER();
 
+    if (oper->chmod == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->chmod(path, mode);
 
     KFS_RETURN(ret);
@@ -165,6 +199,9 @@ handle_chown(const char *path, uid_t uid, gid_t gid)
 
     KFS_ENTER();
 
+    if (oper->chown == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->chown(path, uid, gid);
 
     KFS_RETURN(ret);
@@ -178,6 +215,9 @@ handle_read(const char *path, char *buf, size_t size, off_t offset, struct
 
     KFS_ENTER();
 
+    if (oper->read == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->read(path, buf, size, offset, fi);
 
     KFS_RETURN(ret);
@@ -191,6 +231,9 @@ handle_write(const char *path, const char *buf, size_t size, off_t offset,
 
     KFS_ENTER();
 
+    if (oper->write == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->write(path, buf, size, offset, fi);
 
     KFS_RETURN(ret);
@@ -203,6 +246,9 @@ handle_statfs(const char *path, struct statvfs *stbuf)
 
     KFS_ENTER();
 
+    if (oper->statfs == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->statfs(path, stbuf);
 
     KFS_RETURN(ret);
@@ -215,6 +261,9 @@ handle_flush(const char *path, struct fuse_file_info *fi)
 
     KFS_ENTER();
 
+    if (oper->flush == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->flush(path, fi);
 
     KFS_RETURN(ret);
@@ -227,6 +276,9 @@ handle_release(const char *path, struct fuse_file_info *fi)
 
     KFS_ENTER();
 
+    if (oper->release == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->release(path, fi);
 
     KFS_RETURN(ret);
@@ -239,6 +291,9 @@ handle_fsync(const char *path, int isdatasync, struct fuse_file_info *fi)
 
     KFS_ENTER();
 
+    if (oper->fsync == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->fsync(path, isdatasync, fi);
 
     KFS_RETURN(ret);
@@ -258,6 +313,9 @@ handle_setxattr(const char *path, const char *name, const char *value, size_t
 
     KFS_ENTER();
 
+    if (oper->setxattr == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->setxattr(path, name, value, size, flags);
 
     KFS_RETURN(ret);
@@ -270,6 +328,9 @@ handle_getxattr(const char *path, const char *name, char *value, size_t size)
 
     KFS_ENTER();
 
+    if (oper->getxattr == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->getxattr(path, name, value, size);
 
     KFS_RETURN(ret);
@@ -282,6 +343,9 @@ handle_listxattr(const char *path, char *list, size_t size)
 
     KFS_ENTER();
 
+    if (oper->listxattr == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->listxattr(path, list, size);
 
     KFS_RETURN(ret);
@@ -294,6 +358,9 @@ handle_removexattr(const char *path, const char *name)
 
     KFS_ENTER();
 
+    if (oper->removexattr == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->removexattr(path, name);
 
     KFS_RETURN(ret);
@@ -311,6 +378,9 @@ handle_mkdir(const char *path, mode_t mode)
 
     KFS_ENTER();
 
+    if (oper->mkdir == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->mkdir(path, mode);
 
     KFS_RETURN(ret);
@@ -323,6 +393,9 @@ handle_opendir(const char *path, struct fuse_file_info *fi)
 
     KFS_ENTER();
 
+    if (oper->opendir == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->opendir(path, fi);
 
     KFS_RETURN(ret);
@@ -339,6 +412,9 @@ handle_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
     KFS_ENTER();
 
+    if (oper->readdir == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->readdir(path, buf, filler, offset, fi);
 
     KFS_RETURN(ret);
@@ -351,6 +427,9 @@ handle_releasedir(const char *path, struct fuse_file_info *fi)
 
     KFS_ENTER();
 
+    if (oper->releasedir == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->releasedir(path, fi);
 
     KFS_RETURN(ret);
@@ -363,6 +442,9 @@ handle_fsyncdir(const char *path, int isdatasync, struct fuse_file_info *fi)
 
     KFS_ENTER();
 
+    if (oper->fsyncdir == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->fsyncdir(path, isdatasync, fi);
 
     KFS_RETURN(ret);
@@ -375,6 +457,9 @@ handle_init(struct fuse_conn_info *conn)
 
     KFS_ENTER();
 
+    if (oper->init == NULL) {
+        KFS_RETURN(NULL);
+    }
     context = oper->init(conn);
 
     KFS_RETURN(context);
@@ -385,7 +470,9 @@ handle_destroy(void *context)
 {
     KFS_ENTER();
 
-    oper->destroy(context);
+    if (oper->destroy != NULL) {
+        oper->destroy(context);
+    }
 
     KFS_RETURN();
 }
@@ -397,6 +484,9 @@ handle_access(const char *path, int mask)
 
     KFS_ENTER();
 
+    if (oper->access == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->access(path, mask);
 
     KFS_RETURN(ret);
@@ -409,6 +499,9 @@ handle_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 
     KFS_ENTER();
 
+    if (oper->create == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->create(path, mode, fi);
 
     KFS_RETURN(ret);
@@ -421,6 +514,9 @@ handle_ftruncate(const char *path, off_t size, struct fuse_file_info *fi)
 
     KFS_ENTER();
 
+    if (oper->ftruncate == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->ftruncate(path, size, fi);
     
     KFS_RETURN(ret);
@@ -433,6 +529,9 @@ handle_fgetattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi)
 
     KFS_ENTER();
 
+    if (oper->fgetattr == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->fgetattr(path, stbuf, fi);
 
     KFS_RETURN(ret);
@@ -446,6 +545,9 @@ handle_lock(const char *path, struct fuse_file_info *fi, int cmd,
 
     KFS_ENTER();
 
+    if (oper->lock == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->lock(path, fi, cmd, lock);
 
     KFS_RETURN(ret);
@@ -458,6 +560,9 @@ handle_utimens(const char *path, const struct timespec tvnano[2])
 
     KFS_ENTER();
 
+    if (oper->utimens == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->utimens(path, tvnano);
 
     KFS_RETURN(ret);
@@ -470,6 +575,9 @@ handle_bmap(const char *path, size_t blocksize, uint64_t *idx)
 
     KFS_ENTER();
 
+    if (oper->bmap == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->bmap(path, blocksize, idx);
 
     KFS_RETURN(ret);
@@ -483,6 +591,9 @@ handle_ioctl(const char *path, int cmd, void *arg, struct fuse_file_info *fi,
 
     KFS_ENTER();
 
+    if (oper->ioctl == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->ioctl(path, cmd, arg, fi, flags, data);
 
     KFS_RETURN(ret);
@@ -496,6 +607,9 @@ handle_poll(const char *path, struct fuse_file_info *fi, struct fuse_pollhandle
 
     KFS_ENTER();
 
+    if (oper->poll == NULL) {
+        KFS_RETURN(-ENOSYS);
+    }
     ret = oper->poll(path, fi, ph, reventsp);
 
     KFS_RETURN(ret);
@@ -548,12 +662,20 @@ static const struct fuse_operations handlers = {
  * Global initialization.
  */
 static int
-kfs_pass_init(const char *conffile, const char *section)
+kfs_pass_init(const char *conffile, const char *section,
+        const struct fuse_operations * const subvolumes[])
 {
     (void) conffile;
     (void) section;
 
     KFS_ENTER();
+
+    KFS_ASSERT(conffile != NULL && section != NULL && subvolumes != NULL);
+    if (subvolumes[0] == NULL || subvolumes[1] != NULL) {
+        KFS_ERROR("Exactly one subvolume required by brick %s.", section);
+        KFS_RETURN(-1);
+    }
+    oper = subvolumes[0];
 
     KFS_RETURN(0);
 }

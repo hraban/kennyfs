@@ -5,10 +5,13 @@
 
 #define FUSE_USE_VERSION 29
 
+/** Required for strtok_r(). */
+#define _XOPEN_SOURCE 500
+
 #include "kfs_loadbrick.h"
 
-#include <dlfcn.h>
 #include <fuse.h>
+#include <dlfcn.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -27,10 +30,19 @@ enum {
     _BRICK_NUM,
 };
 
+#define MAX_SUBVOLUMES 100
+
 /** Private data for resource tracking. */
 struct kfs_loadbrick_priv {
     void *dload_handle;
     const struct kfs_brick_api *brick_api;
+    /**
+     * Array of pointers to subvolumes-nodes. Must be NULL-terminated, hence
+     * the +1.
+     */
+    struct kfs_loadbrick_priv *subvolumes[MAX_SUBVOLUMES + 1];
+    /** For every subvolume: a pointer to its FUSE handlers. */
+    const struct fuse_operations *subvolumes_funcs[MAX_SUBVOLUMES + 1];
 };
 
 const char * const BRICK_NAMES[] = {
@@ -44,6 +56,21 @@ const char * const BRICK_PATHS[] = {
     [BRICK_POSIX] = "posix_brick/libkfs_brick_posix.so",
     [BRICK_TCP] = "tcp_brick/libkfs_brick_tcp.so",
 };
+
+/**
+ * Allocate a new, zero'ed private brick.
+ */
+static struct kfs_loadbrick_priv *
+new_kfs_loadbrick_priv(void)
+{
+    struct kfs_loadbrick_priv *p = NULL;
+
+    KFS_ENTER();
+
+    p = KFS_CALLOC(1, sizeof(*p));
+
+    KFS_RETURN(p);
+}
 
 /**
  * Get the path corresponding to given brick name. On success the brickpath
@@ -67,6 +94,124 @@ get_brick_path(const char brickname[])
 }
 
 /**
+ * Close a brick's subvolumes and free all the associated resources.  Note: this
+ * closes all subvolumes but actually NOT the brick itself: that should be
+ * halted before calling this. A bit cumbersome, but it allows a non-initialised
+ * brick to be deleted. It /does/ free the brick's memory, though, and returns
+ * a pointer to an unusable memory location.
+ */
+static struct kfs_loadbrick_priv *
+del_any_brick(struct kfs_loadbrick_priv *priv)
+{
+    uint_t i = 0;
+
+    KFS_ENTER();
+
+    for (i = 0; priv->subvolumes[i] != NULL; i++) {
+        priv->subvolumes[i]->brick_api->halt();
+        priv->subvolumes[i] = del_any_brick(priv->subvolumes[i]);
+    }
+    priv = KFS_FREE(priv);
+
+    KFS_RETURN(priv);
+}
+
+static struct kfs_loadbrick_priv *
+get_any_brick(const char *conffile, const char *section)
+{
+    kfs_brick_getapi_f brick_getapi_f = NULL;
+    const struct kfs_brick_api *brick_api = NULL;
+    const char *brickpath = NULL;
+    struct kfs_loadbrick_priv *priv = NULL;
+    uint_t i = 0;
+    void *dynhandle = NULL;
+    char *buf = NULL;
+    char *strtokcontext = NULL;
+    char *subvolume = NULL;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    /* Read the configuration file. */
+    buf = kfs_ini_gets(conffile, section, "type");
+    if (buf == NULL) {
+        KFS_ERROR("Failed to parse configuration file %s", conffile);
+        KFS_RETURN(NULL);
+    }
+    brickpath = get_brick_path(buf);
+    if (brickpath == NULL) {
+        KFS_ERROR("Root brick type not recognized: '%s'.", buf);
+        buf = KFS_FREE(buf);
+        KFS_RETURN(NULL);
+    }
+    buf = KFS_FREE(buf);
+    /* Dynamically load the brick. */
+    dynhandle = dlopen(brickpath, RTLD_NOW | RTLD_LOCAL);
+    if (dynhandle == NULL) {
+        KFS_ERROR("Loading brick failed: %s", dlerror());
+        KFS_RETURN(NULL);
+    }
+    brick_getapi_f = dlsym(dynhandle, "kfs_brick_getapi");
+    if (brick_getapi_f == NULL) {
+        KFS_ERROR("Loading brick failed: %s", dlerror());
+        KFS_RETURN(NULL);
+    }
+    /* Allocate space for the bookkeeping struct. */
+    priv = new_kfs_loadbrick_priv();
+    if (priv == NULL) {
+        KFS_RETURN(NULL);
+    }
+    brick_api = brick_getapi_f();
+    priv->dload_handle = dynhandle;
+    priv->brick_api = brick_api;
+    /* Load the subvolumes, if any. */
+    buf = kfs_ini_gets(conffile, section, "subvolumes");
+    if (buf != NULL) {
+        /* Initialize all subvolumes. */
+        subvolume = strtok_r(buf, ",", &strtokcontext);
+        if (subvolume == NULL) {
+            KFS_ERROR("Invalid `subvolumes' value for brick %s in file %s.",
+                    section, conffile);
+            priv = del_any_brick(priv);
+            buf = KFS_FREE(buf);
+            KFS_RETURN(NULL);
+        }
+        for (i = 0; i < MAX_SUBVOLUMES; i++) {
+            KFS_DEBUG("Create subvolume nr %u for brick %s: `%s'.", i + 1,
+                    section, subvolume);
+            priv->subvolumes[i] = get_any_brick(conffile, subvolume);
+            if (priv->subvolumes[i] == NULL) {
+                priv = del_any_brick(priv);
+                buf = KFS_FREE(buf);
+                KFS_RETURN(NULL);
+            }
+            priv->subvolumes_funcs[i] =
+                priv->subvolumes[i]->brick_api->getfuncs();
+            subvolume = strtok_r(NULL, ",", &strtokcontext);
+            if (subvolume == NULL) {
+                break;
+            }
+        }
+        buf = KFS_FREE(buf);
+        if (i == MAX_SUBVOLUMES) {
+            KFS_ERROR("Too many subvolumes for %s (%u max).", section,
+                    MAX_SUBVOLUMES);
+            priv = del_any_brick(priv);
+            KFS_RETURN(NULL);
+        }
+    }
+    /* Initialise the brick. */
+    ret = brick_api->init(conffile, section, priv->subvolumes_funcs);
+    if (ret == -1) {
+        KFS_ERROR("Preparing brick `%s' failed (code %d).", section, ret);
+        priv = del_any_brick(priv);
+        KFS_RETURN(NULL);
+    }
+
+    KFS_RETURN(priv);
+}
+
+/**
  * Get a pointer to the API for the root brick and initialise all bricks in the
  * chain. A leading ~ in the path is expanded to the environment variable HOME.
  * TODO: Actually only the root is initialised for now, should be fixed.
@@ -74,15 +219,9 @@ get_brick_path(const char brickname[])
 int
 get_root_brick(const char *conffile, struct kfs_loadbrick *brick)
 {
-    char brickname[16] = {'\0'};
     struct kfs_loadbrick_priv *priv = NULL;
-    kfs_brick_getapi_f brick_getapi_f = NULL;
-    const struct kfs_brick_api *brick_api = NULL;
-    const char *brickpath = NULL;
     const char *homedir = NULL;
     char *kfsconf = NULL;
-    void *dynhandle = NULL;
-    int ret = 0;
 
     KFS_ENTER();
 
@@ -99,56 +238,27 @@ get_root_brick(const char *conffile, struct kfs_loadbrick *brick)
     } else {
         kfsconf = kfs_strcpy(conffile);
     }
-    priv = KFS_MALLOC(sizeof(*priv));
-    if (kfsconf == NULL || priv == NULL) {
+    if (kfsconf == NULL) {
         KFS_RETURN(-1);
     }
-    /* Read the configuration file. */
-    ret = ini_gets("brick_root", "type", "", brickname, NUMELEM(brickname),
-            kfsconf);
-    if (ret == 0) {
-        KFS_ERROR("Failed to parse configuration file %s", kfsconf);
-        KFS_RETURN(-1);
-    }
-    ret = 0;
-    brickpath = get_brick_path(brickname);
-    if (brickpath == NULL) {
-        KFS_ERROR("Brick type not regocnized: '%s'.", brickname);
-        KFS_RETURN(-1);
-    }
-    /* Load the brick. */
-    dynhandle = dlopen(brickpath, RTLD_NOW | RTLD_LOCAL);
-    if (dynhandle == NULL) {
-        KFS_ERROR("Loading brick failed: %s", dlerror());
-        KFS_RETURN(-1);
-    }
-    brick_getapi_f = dlsym(dynhandle, "kfs_brick_getapi");
-    if (brick_getapi_f == NULL) {
-        KFS_ERROR("Loading brick failed: %s", dlerror());
-        KFS_RETURN(-1);
-    }
-    brick_api = brick_getapi_f();
-    ret = brick_api->init(kfsconf, "brick_root");
-    if (ret == -1) {
-        KFS_ERROR("Preparing brick failed, could not start: code %d.", ret);
-        KFS_RETURN(-1);
-    }
+    priv = get_any_brick(kfsconf, "brick_root");
     kfsconf = KFS_FREE(kfsconf);
-    priv->dload_handle = dynhandle;
-    priv->brick_api = brick_api;
-    brick->oper = brick_api->getfuncs();
+    if (priv == NULL) {
+        KFS_RETURN(-1);
+    }
     brick->priv = priv;
+    brick->oper = priv->brick_api->getfuncs();
 
     KFS_RETURN(0);
-}
+} 
 
 /**
  * Clean up resources opened by get_root_brick().
  */
-void
+struct kfs_loadbrick *
 del_root_brick(struct kfs_loadbrick *brick)
 {
-    const struct kfs_brick_api *brick_api = NULL;
+    void *dynhandle = NULL;
     struct kfs_loadbrick_priv *priv = NULL;
     int ret = 0;
 
@@ -156,14 +266,15 @@ del_root_brick(struct kfs_loadbrick *brick)
 
     KFS_ASSERT(brick != NULL);
     priv = brick->priv;
-    brick_api = priv->brick_api;
-    brick_api->halt();
-    ret = dlclose(priv->dload_handle);
+    dynhandle = priv->dload_handle;
+    priv->brick_api->halt();
+    priv = del_any_brick(priv);
+    brick->priv = priv;
+    ret = dlclose(dynhandle);
     if (ret != 0) {
         KFS_WARNING("Failed to close dynamically loaded library: %s",
                 dlerror());
     }
 
-    KFS_RETURN();
+    KFS_RETURN(brick);
 }
-
