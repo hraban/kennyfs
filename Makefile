@@ -12,7 +12,7 @@ OFILES := $(patsubst %.c,%.o,$(wildcard kfs_*.c)) minini/minini.o
 FULLCC := $(CC) $(CFLAGS) $(CCINCARGS)
 FULLLINK := $(LINKER) $(LINKARGS)
 
-.PHONY: all clean $(BRICKS) $(CLEANBRICKS)
+.PHONY: all clean test $(BRICKS) $(CLEANBRICKS)
 
 all: $(NAME) $(BRICKS) 
 	$(MAKE) -C tcp_server
@@ -20,6 +20,9 @@ all: $(NAME) $(BRICKS)
 clean: $(CLEANBRICKS)
 	$(MAKE) -C tcp_server clean
 	rm -f $(NAME) $(OFILES) *.o lib*.so*
+
+test:
+	$(MAKE) -C test
 
 $(NAME): $(OFILES) $(NAME).o
 	$(FULLLINK) -o $@ $(OFILES) $(NAME).o
