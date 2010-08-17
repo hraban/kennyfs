@@ -583,6 +583,7 @@ handle_bmap(const char *path, size_t blocksize, uint64_t *idx)
     KFS_RETURN(ret);
 }
 
+#if FUSE_VERSION >= 28
 static int
 handle_ioctl(const char *path, int cmd, void *arg, struct fuse_file_info *fi,
         uint_t flags, void *data)
@@ -598,7 +599,9 @@ handle_ioctl(const char *path, int cmd, void *arg, struct fuse_file_info *fi,
 
     KFS_RETURN(ret);
 }
+#endif
 
+#if FUSE_VERSION >= 28
 static int
 handle_poll(const char *path, struct fuse_file_info *fi, struct fuse_pollhandle
         *ph, uint_t *reventsp)
@@ -614,6 +617,7 @@ handle_poll(const char *path, struct fuse_file_info *fi, struct fuse_pollhandle
 
     KFS_RETURN(ret);
 }
+#endif
 
 static const struct fuse_operations handlers = {
     .getattr = handle_getattr,
@@ -654,8 +658,10 @@ static const struct fuse_operations handlers = {
     .lock = handle_lock,
     .utimens = handle_utimens,
     .bmap = handle_bmap,
+#if FUSE_VERSION >= 28
     .ioctl = handle_ioctl,
     .poll = handle_poll,
+#endif
 };
 
 /**
