@@ -47,19 +47,14 @@
                                                     ? (strbuf) \
                                                     : KFS_FREE(strbuf))
 
-/**
- * Points to the root of this brick on the real filesystem. This variable is
- * only modified during initialisation.
- */
-static char mountroot[256] = {'\0'};
-
 /*
- * FUSE API.
+ * Operation handlers.
  */
 
 static int
-kenny_getattr(const char *fusepath, struct stat *stbuf)
+posix_getattr(const kfs_context_t co, const char *fusepath, struct stat *stbuf)
 {
+    const char * const mountroot = co->private_data;
     int ret = 0;
     /* On-stack buffer for paths of limited length. Otherwise: malloc(). */
     char pathbuf[PATHBUF_SIZE];
@@ -81,8 +76,10 @@ kenny_getattr(const char *fusepath, struct stat *stbuf)
 }
 
 static int
-kenny_fgetattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi)
+posix_fgetattr(const kfs_context_t co, const char *path, struct stat *stbuf,
+        struct fuse_file_info *fi)
 {
+    (void) co;
     (void) path;
 
     int ret = 0;
@@ -101,8 +98,10 @@ kenny_fgetattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi)
  * Read the target of a symlink.
  */
 static int
-kenny_readlink(const char *fusepath, char *buf, size_t size)
+posix_readlink(const kfs_context_t co, const char *fusepath, char *buf, size_t
+        size)
 {
+    const char * const mountroot = co->private_data;
     char pathbuf[PATHBUF_SIZE];
     ssize_t ret = 0;
     char *fullpath = NULL;
@@ -128,8 +127,10 @@ kenny_readlink(const char *fusepath, char *buf, size_t size)
 }
 
 static int
-kenny_mknod(const char *fusepath, mode_t mode, dev_t dev)
+posix_mknod(const kfs_context_t co, const char *fusepath, mode_t mode, dev_t
+        dev)
 {
+    const char * const mountroot = co->private_data;
     char pathbuf[PATHBUF_SIZE];
     int ret = 0;
     char *fullpath = NULL;
@@ -151,8 +152,9 @@ kenny_mknod(const char *fusepath, mode_t mode, dev_t dev)
 }
 
 static int
-kenny_truncate(const char *fusepath, off_t offset)
+posix_truncate(const kfs_context_t co, const char *fusepath, off_t offset)
 {
+    const char * const mountroot = co->private_data;
     char pathbuf[PATHBUF_SIZE];
     int ret = 0;
     char *fullpath = NULL;
@@ -173,8 +175,10 @@ kenny_truncate(const char *fusepath, off_t offset)
 }
 
 static int
-kenny_open(const char *fusepath, struct fuse_file_info *fi)
+posix_open(const kfs_context_t co, const char *fusepath, struct fuse_file_info
+        *fi)
 {
+    const char * const mountroot = co->private_data;
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
     int ret = 0;
@@ -199,8 +203,9 @@ kenny_open(const char *fusepath, struct fuse_file_info *fi)
 }
 
 static int
-kenny_unlink(const char *fusepath)
+posix_unlink(const kfs_context_t co, const char *fusepath)
 {
+    const char * const mountroot = co->private_data;
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
     int ret = 0;
@@ -222,8 +227,9 @@ kenny_unlink(const char *fusepath)
 }
 
 static int
-kenny_rmdir(const char *fusepath)
+posix_rmdir(const kfs_context_t co, const char *fusepath)
 {
+    const char * const mountroot = co->private_data;
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
     int ret = 0;
@@ -247,8 +253,9 @@ kenny_rmdir(const char *fusepath)
  * No translation takes place for the path1 argument.
  */
 static int
-kenny_symlink(const char *path1, const char *path2)
+posix_symlink(const kfs_context_t co, const char *path1, const char *path2)
 {
+    const char * const mountroot = co->private_data;
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
     int ret = 0;
@@ -266,8 +273,9 @@ kenny_symlink(const char *path1, const char *path2)
 }
 
 static int
-kenny_rename(const char *from, const char *to)
+posix_rename(const kfs_context_t co, const char *from, const char *to)
 {
+    const char * const mountroot = co->private_data;
     char pathbuf_from[PATHBUF_SIZE];
     char pathbuf_to[PATHBUF_SIZE];
     char *fullpath_from = NULL;
@@ -291,8 +299,9 @@ kenny_rename(const char *from, const char *to)
 }
 
 static int
-kenny_link(const char *from, const char *to)
+posix_link(const kfs_context_t co, const char *from, const char *to)
 {
+    const char * const mountroot = co->private_data;
     char pathbuf_from[PATHBUF_SIZE];
     char pathbuf_to[PATHBUF_SIZE];
     char *fullpath_from = NULL;
@@ -316,8 +325,9 @@ kenny_link(const char *from, const char *to)
 }
 
 static int
-kenny_chmod(const char *fusepath, mode_t mode)
+posix_chmod(const kfs_context_t co, const char *fusepath, mode_t mode)
 {
+    const char * const mountroot = co->private_data;
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
     int ret = 0;
@@ -338,8 +348,9 @@ kenny_chmod(const char *fusepath, mode_t mode)
 }
 
 static int
-kenny_chown(const char *fusepath, uid_t uid, gid_t gid)
+posix_chown(const kfs_context_t co, const char *fusepath, uid_t uid, gid_t gid)
 {
+    const char * const mountroot = co->private_data;
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
     int ret = 0;
@@ -365,9 +376,10 @@ kenny_chown(const char *fusepath, uid_t uid, gid_t gid)
  * Read the contents of given file.
  */
 static int
-kenny_read(const char *fusepath, char *buf, size_t size, off_t offset, struct
-        fuse_file_info *fi)
+posix_read(const kfs_context_t co, const char *fusepath, char *buf, size_t size,
+        off_t offset, struct fuse_file_info *fi)
 {
+    (void) co;
     (void) fusepath;
 
     int ret = 0;
@@ -386,9 +398,11 @@ kenny_read(const char *fusepath, char *buf, size_t size, off_t offset, struct
  * Write to a file.
  */
 static int
-kenny_write(const char *fusepath, const char *buf, size_t size, off_t offset,
+posix_write(const kfs_context_t co, const char *fusepath, const char *buf,
+        size_t size, off_t offset,
         struct fuse_file_info *fi)
 {
+    (void) co;
     (void) fusepath;
 
     int ret = 0;
@@ -409,9 +423,10 @@ kenny_write(const char *fusepath, const char *buf, size_t size, off_t offset,
  */
 
 static int
-kenny_setxattr(const char *fusepath, const char *name, const char *value, size_t
-        size, int flags)
+posix_setxattr(const kfs_context_t co, const char *fusepath, const char *name,
+        const char *value, size_t size, int flags)
 {
+    const char * const mountroot = co->private_data;
     char pathbuf[PATHBUF_SIZE];
     int ret = 0;
     char *fullpath = NULL;
@@ -433,8 +448,10 @@ kenny_setxattr(const char *fusepath, const char *name, const char *value, size_t
 }
 
 static int
-kenny_getxattr(const char *fusepath, const char *name, char *value, size_t size)
+posix_getxattr(const kfs_context_t co, const char *fusepath, const char *name,
+        char *value, size_t size)
 {
+    const char * const mountroot = co->private_data;
     char pathbuf[PATHBUF_SIZE];
     int ret = 0;
     char *fullpath = NULL;
@@ -455,8 +472,10 @@ kenny_getxattr(const char *fusepath, const char *name, char *value, size_t size)
 }
 
 static int
-kenny_listxattr(const char *fusepath, char *list, size_t size)
+posix_listxattr(const kfs_context_t co, const char *fusepath, char *list, size_t
+        size)
 {
+    const char * const mountroot = co->private_data;
     char pathbuf[PATHBUF_SIZE];
     ssize_t ret = 0;
     char *fullpath = NULL;
@@ -477,8 +496,10 @@ kenny_listxattr(const char *fusepath, char *list, size_t size)
 }
 
 static int
-kenny_removexattr(const char *fusepath, const char *name)
+posix_removexattr(const kfs_context_t co, const char *fusepath, const char
+        *name)
 {
+    const char * const mountroot = co->private_data;
     char pathbuf[PATHBUF_SIZE];
     int ret = 0;
     char *fullpath = NULL;
@@ -504,8 +525,9 @@ kenny_removexattr(const char *fusepath, const char *name)
  */
 
 static int
-kenny_mkdir(const char *fusepath, mode_t mode)
+posix_mkdir(const kfs_context_t co, const char *fusepath, mode_t mode)
 {
+    const char * const mountroot = co->private_data;
     char pathbuf[PATHBUF_SIZE];
     int ret = 0;
     char *fullpath = NULL;
@@ -526,8 +548,10 @@ kenny_mkdir(const char *fusepath, mode_t mode)
 }
 
 static int
-kenny_opendir(const char *fusepath, struct fuse_file_info *fi)
+posix_opendir(const kfs_context_t co, const char *fusepath, struct
+        fuse_file_info *fi)
 {
+    const char * const mountroot = co->private_data;
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
     DIR *dir = NULL;
@@ -555,9 +579,10 @@ kenny_opendir(const char *fusepath, struct fuse_file_info *fi)
  * List directory contents.
  */
 static int
-kenny_readdir(const char *fusepath, void *buf, fuse_fill_dir_t filler,
-        off_t offset, struct fuse_file_info *fi)
+posix_readdir(const kfs_context_t co, const char *fusepath, void *buf,
+        fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
 {
+    (void) co;
     (void) fusepath;
 
     struct stat stbuf;
@@ -597,8 +622,10 @@ kenny_readdir(const char *fusepath, void *buf, fuse_fill_dir_t filler,
 }
 
 static int
-kenny_releasedir(const char *fusepath, struct fuse_file_info *fi)
+posix_releasedir(const kfs_context_t co, const char *fusepath, struct
+        fuse_file_info *fi)
 {
+    (void) co;
     (void) fusepath;
 
     DIR *dir = NULL;
@@ -619,8 +646,10 @@ kenny_releasedir(const char *fusepath, struct fuse_file_info *fi)
  * Update access/modification time.
  */
 static int
-kenny_utimens(const char *fusepath, const struct timespec tvnano[2])
+posix_utimens(const kfs_context_t co, const char *fusepath, const struct
+        timespec tvnano[2])
 {
+    const char * const mountroot = co->private_data;
     char pathbuf[PATHBUF_SIZE];
     struct timeval tvmicro[2];
     int ret = 0;
@@ -647,99 +676,93 @@ kenny_utimens(const char *fusepath, const struct timespec tvnano[2])
     KFS_RETURN(ret);
 }
 
-static const struct fuse_operations kenny_oper = {
-    .getattr = kenny_getattr,
-    .readlink = kenny_readlink,
-    .mknod = kenny_mknod,
-    .mkdir = kenny_mkdir,
-    .unlink = kenny_unlink,
-    .rmdir = kenny_rmdir,
-    .symlink = kenny_symlink,
-    .rename = kenny_rename,
-    .link = kenny_link,
-    .chmod = kenny_chmod,
-    .chown = kenny_chown,
-    .truncate = kenny_truncate,
-    .open = kenny_open,
-    .read = kenny_read,
-    .write = kenny_write,
-    .statfs = NULL,
-    .flush = NULL,
-    .release = NULL,
-    .fsync = NULL,
+static const struct kfs_operations posix_oper = {
+    .getattr = posix_getattr,
+    .readlink = posix_readlink,
+    .mknod = posix_mknod,
+    .mkdir = posix_mkdir,
+    .unlink = posix_unlink,
+    .rmdir = posix_rmdir,
+    .symlink = posix_symlink,
+    .rename = posix_rename,
+    .link = posix_link,
+    .chmod = posix_chmod,
+    .chown = posix_chown,
+    .truncate = posix_truncate,
+    .open = posix_open,
+    .read = posix_read,
+    .write = posix_write,
+    .statfs = nosys_statfs,
+    .flush = nosys_flush,
+    .release = nosys_release,
+    .fsync = nosys_fsync,
 #if KFS_USE_XATTR
-    .setxattr = kenny_setxattr,
-    .getxattr = kenny_getxattr,
-    .listxattr = kenny_listxattr,
-    .removexattr = kenny_removexattr,
+    .setxattr = posix_setxattr,
+    .getxattr = posix_getxattr,
+    .listxattr = posix_listxattr,
+    .removexattr = posix_removexattr,
 #endif
-    .opendir = kenny_opendir,
-    .readdir = kenny_readdir,
-    .releasedir = kenny_releasedir,
-    .fsyncdir = NULL,
-    .init = NULL,
-    .destroy = NULL,
-    .access = NULL,
-    .create = NULL,
-    .ftruncate = NULL,
-    .fgetattr = kenny_fgetattr,
-    .lock = NULL,
-    .utimens = kenny_utimens,
+    .opendir = posix_opendir,
+    .readdir = posix_readdir,
+    .releasedir = posix_releasedir,
+    .fsyncdir = nosys_fsyncdir,
+    .access = nosys_access,
+    .create = nosys_create,
+    .ftruncate = nosys_ftruncate,
+    .fgetattr = posix_fgetattr,
+    .lock = nosys_lock,
+    .utimens = posix_utimens,
 };
 
 /**
  * Global initialization.
  */
-static int
-kenny_init(const char *conffile, const char *section, const struct
-        fuse_operations * const subvolumes[])
+static void *
+kenny_init(const char *conffile, const char *section, size_t num_subvolumes,
+        const struct kfs_subvolume subvolumes[])
 {
-    const size_t bufsize = NUMELEM(mountroot);
-    int ret = 0;
+    (void) subvolumes;
+
+    char *mountroot = NULL;
 
     KFS_ENTER();
 
-    KFS_ASSERT(section != NULL && conffile != NULL && subvolumes != NULL);
-    if (subvolumes[0] != NULL) {
+    KFS_ASSERT(section != NULL && conffile != NULL);
+    if (num_subvolumes != 0) {
         KFS_ERROR("Brick `%s' (POSIX) takes no subvolumes.", section);
-        KFS_RETURN(-1);
+        KFS_RETURN(NULL);
     }
-    ret = ini_gets(section, "path", "", mountroot, bufsize, conffile);
-    if (ret == 0) {
+    mountroot = kfs_ini_gets(conffile, section, "path");
+    if (mountroot == NULL) {
         KFS_ERROR("Missing value `path' in section [%s] of file %s.", section,
                 conffile);
-        KFS_RETURN(-1);
-    } else if (ret == bufsize - 1) {
-        /* TODO: Verify (test) if this conditional is correct. */
-        KFS_ERROR("Value of `path' option in section [%s] of file %s too long.",
-                section, conffile);
-        KFS_RETURN(-1);
+        KFS_RETURN(NULL);
     }
     KFS_INFO("Started POSIX brick `%s': mirroring `%s'.", section, mountroot);
 
-    KFS_RETURN(0);
+    KFS_RETURN(mountroot);
 }
 
 /*
  * Get the backend interface.
  */
-static const struct fuse_operations *
+static const struct kfs_operations *
 kenny_getfuncs(void)
 {
     KFS_ENTER();
 
-    KFS_RETURN(&kenny_oper);
+    KFS_RETURN(&posix_oper);
 }
 
 /**
  * Global cleanup.
  */
 static void
-kenny_halt(void)
+kenny_halt(void *private_data)
 {
     KFS_ENTER();
 
-    mountroot[0] = '\0';
+    private_data = KFS_FREE(private_data);
 
     KFS_RETURN();
 }
