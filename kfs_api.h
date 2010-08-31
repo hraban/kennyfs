@@ -104,7 +104,7 @@ struct kfs_operations {
     int (*ioctl) (const kfs_context_t, const char *, int cmd, void *arg, struct
             fuse_file_info *, uint_t flags, void *data);
     int (*poll) (const kfs_context_t, const char *, struct fuse_file_info *,
-            struct fuse_pollhandle *ph, uint_t *reventsp)
+            struct fuse_pollhandle *ph, uint_t *reventsp);
 #endif
 };
 
