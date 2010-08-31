@@ -1,5 +1,8 @@
 /**
  * KennyFS backend forwarding everything to a kennyfs server over TCP.
+ *
+ * TODO: Use the context argument to the operation handlers instead of global
+ * variables to store state about the socket with the server (see connection.c).
  */
 
 #define FUSE_USE_VERSION 29
@@ -24,10 +27,12 @@ char port[8] = {'\0'};
 /**
  * Global initialization.
  */
-static int
-kenny_init(const char *conffile, const char *section,
-        const struct fuse_operations * const subvolumes[])
+static void *
+kenny_init(const char *conffile, const char *section, size_t num_subvolumes,
+        const struct kfs_subvolume subvolumes[])
 {
+    (void) subvolumes;
+
     const size_t hostname_size = NUMELEM(hostname);
     const size_t port_size = NUMELEM(port);
     struct conn_info conf = {.hostname = NULL, .port = NULL};
@@ -37,9 +42,9 @@ kenny_init(const char *conffile, const char *section,
     KFS_ENTER();
 
     KFS_ASSERT(section != NULL && conffile != NULL && subvolumes != NULL);
-    if (subvolumes[0] != NULL) {
+    if (num_subvolumes != 0) {
         KFS_ERROR("Brick %s (TCP) takes no subvolumes.", section);
-        KFS_RETURN(-1);
+        KFS_RETURN(NULL);
     }
     ret1 = ini_gets("brick_root", "hostname", "", hostname, hostname_size,
             conffile);
@@ -47,34 +52,42 @@ kenny_init(const char *conffile, const char *section,
     if (ret1 == 0 || ret2 == 0) {
         KFS_ERROR("Did not find hostname and port for TCP brick in section `%s'"
                   " of configuration file %s.", section, conffile);
-        KFS_RETURN(-1);
+        KFS_RETURN(NULL);
     } else if (ret1 == hostname_size - 1) {
         KFS_ERROR("Value of hostname option in section `%s' of file %s too "
                   "long.", section, conffile);
-        KFS_RETURN(-1);
+        KFS_RETURN(NULL);
     } else if (ret2 == port_size - 1) {
         KFS_ERROR("Value of port option in section `%s' of file %s too long.",
                 section, conffile);
-        KFS_RETURN(-1);
+        KFS_RETURN(NULL);
     }
     conf.hostname = hostname;
     conf.port = port;
     ret1 = init_connection(&conf);
-    if (ret1 == 0) {
-        ret1 = init_handlers();
+    if (ret1 != 0) {
+        KFS_RETURN(NULL);
+    }
+    ret1 = init_handlers();
+    if (ret1 != 0) {
+        KFS_RETURN(NULL);
     }
 
-    KFS_RETURN(ret1);
+    /* Any non-NULL value indicates success, and context is not yet used. */
+    KFS_RETURN((void *) 1);
 }
 
 /**
  * Global cleanup.
  */
 static void
-kenny_halt(void)
+kenny_halt(void *private_data)
 {
+    KFS_NASSERT((void) private_data);
+
     KFS_ENTER();
 
+    KFS_ASSERT(private_data == NULL);
     /** TODO: Close connection and handlers. */
 
     KFS_RETURN();

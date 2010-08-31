@@ -1,6 +1,8 @@
 #ifndef KENNYFS_H
 #define KENNYFS_H
 
+#include <assert.h>
+
 #define KFS_VERSION "0.0"
 
 /* Do not use the inline keyword outside C99. */
@@ -39,6 +41,18 @@
 #    define htonll(x) ((((uint64_t)htonl(x)) << 32) + htonl((x) >> 32))
 #    define ntohll(x) ((((uint64_t)ntohl(x)) << 32) + ntohl((x) >> 32))
 #  endif
+#endif
+
+#define KFS_ASSERT assert
+/* KFS_NASSERT is executed verbatim in NON-debugging mode. */
+#ifdef NDEBUG
+#  define KFS_NASSERT(x) x
+#else
+#  define KFS_NASSERT(X) ((void) 0)
+#endif
+
+#ifdef HAVE_XATTR
+#  define KFS_USE_XATTR
 #endif
 
 typedef unsigned int uint_t;

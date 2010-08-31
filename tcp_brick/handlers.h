@@ -4,6 +4,6 @@
 #include <fuse.h>
 
 int init_handlers(void);
-const struct fuse_operations * get_handlers(void);
+const struct kfs_operations * get_handlers(void);
 
 #endif

@@ -22,6 +22,7 @@
 #include "kfs_logging.h"
 #include "kfs_memory.h"
 #include "kfs_misc.h"
+#include "kfs_fuseoperglue.h"
 
 enum {
     BRICK_PASS,
@@ -30,19 +31,18 @@ enum {
     _BRICK_NUM,
 };
 
-#define MAX_SUBVOLUMES 100
+#define MAX_SUBVOLUMES 100U
 
 /** Private data for resource tracking. */
 struct kfs_loadbrick_priv {
-    void *dload_handle;
+    /** For every subvolume: an API struct. */
+    struct kfs_subvolume subvolumes[MAX_SUBVOLUMES];
+    /** Array of pointers to subvolumes-nodes. */
+    struct kfs_loadbrick_priv *child_nodes[MAX_SUBVOLUMES];
     const struct kfs_brick_api *brick_api;
-    /**
-     * Array of pointers to subvolumes-nodes. Must be NULL-terminated, hence
-     * the +1.
-     */
-    struct kfs_loadbrick_priv *subvolumes[MAX_SUBVOLUMES + 1];
-    /** For every subvolume: a pointer to its FUSE handlers. */
-    const struct fuse_operations *subvolumes_funcs[MAX_SUBVOLUMES + 1];
+    void *dload_handle;
+    void *private_data;
+    size_t num_subvolumes;
 };
 
 const char * const BRICK_NAMES[] = {
@@ -103,13 +103,15 @@ get_brick_path(const char brickname[])
 static struct kfs_loadbrick_priv *
 del_any_brick(struct kfs_loadbrick_priv *priv)
 {
+    void *private_data = NULL;
     uint_t i = 0;
 
     KFS_ENTER();
 
-    for (i = 0; priv->subvolumes[i] != NULL; i++) {
-        priv->subvolumes[i]->brick_api->halt();
-        priv->subvolumes[i] = del_any_brick(priv->subvolumes[i]);
+    for (i = 0; i < priv->num_subvolumes; i++) {
+        private_data = priv->subvolumes[i].private_data;
+        priv->child_nodes[i]->brick_api->halt(private_data);
+        priv->child_nodes[i] = del_any_brick(priv->child_nodes[i]);
     }
     priv = KFS_FREE(priv);
 
@@ -123,12 +125,12 @@ get_any_brick(const char *conffile, const char *section)
     const struct kfs_brick_api *brick_api = NULL;
     const char *brickpath = NULL;
     struct kfs_loadbrick_priv *priv = NULL;
+    struct kfs_subvolume *subvolume = NULL;
+    char *subvolume_name = NULL;
     uint_t i = 0;
     void *dynhandle = NULL;
     char *buf = NULL;
     char *strtokcontext = NULL;
-    char *subvolume = NULL;
-    int ret = 0;
 
     KFS_ENTER();
 
@@ -168,8 +170,8 @@ get_any_brick(const char *conffile, const char *section)
     buf = kfs_ini_gets(conffile, section, "subvolumes");
     if (buf != NULL) {
         /* Initialize all subvolumes. */
-        subvolume = strtok_r(buf, ",", &strtokcontext);
-        if (subvolume == NULL) {
+        subvolume_name = strtok_r(buf, ",", &strtokcontext);
+        if (subvolume_name == NULL) {
             KFS_ERROR("Invalid `subvolumes' value for brick %s in file %s.",
                     section, conffile);
             priv = del_any_brick(priv);
@@ -178,17 +180,20 @@ get_any_brick(const char *conffile, const char *section)
         }
         for (i = 0; i < MAX_SUBVOLUMES; i++) {
             KFS_DEBUG("Create subvolume nr %u for brick %s: `%s'.", i + 1,
-                    section, subvolume);
-            priv->subvolumes[i] = get_any_brick(conffile, subvolume);
-            if (priv->subvolumes[i] == NULL) {
+                    section, subvolume_name);
+            priv->child_nodes[i] = get_any_brick(conffile, subvolume_name);
+            if (priv->child_nodes[i] == NULL) {
                 priv = del_any_brick(priv);
                 buf = KFS_FREE(buf);
                 KFS_RETURN(NULL);
             }
-            priv->subvolumes_funcs[i] =
-                priv->subvolumes[i]->brick_api->getfuncs();
-            subvolume = strtok_r(NULL, ",", &strtokcontext);
-            if (subvolume == NULL) {
+            subvolume = &(priv->subvolumes[i]);
+            subvolume->oper = priv->child_nodes[i]->brick_api->getfuncs();
+            subvolume->private_data = priv->child_nodes[i]->private_data;
+            priv->num_subvolumes += 1;
+            /* Name of the next subvolume. */
+            subvolume_name = strtok_r(NULL, ",", &strtokcontext);
+            if (subvolume_name == NULL) {
                 break;
             }
         }
@@ -201,9 +206,10 @@ get_any_brick(const char *conffile, const char *section)
         }
     }
     /* Initialise the brick. */
-    ret = brick_api->init(conffile, section, priv->subvolumes_funcs);
-    if (ret == -1) {
-        KFS_ERROR("Preparing brick `%s' failed (code %d).", section, ret);
+    priv->private_data = brick_api->init(conffile, section,
+            priv->num_subvolumes, priv->subvolumes);
+    if (priv->private_data == NULL) {
+        KFS_ERROR("Preparing brick `%s' failed.", section);
         priv = del_any_brick(priv);
         KFS_RETURN(NULL);
     }
@@ -219,6 +225,10 @@ get_any_brick(const char *conffile, const char *section)
 int
 get_root_brick(const char *conffile, struct kfs_loadbrick *brick)
 {
+    /** The operation handlers as per the KennyFS API. */
+    const struct kfs_operations *kfs_oper = NULL;
+    /** The operation handlers as per the FUSE API. */
+    const struct fuse_operations *fuse_oper = NULL;
     struct kfs_loadbrick_priv *priv = NULL;
     const char *homedir = NULL;
     char *kfsconf = NULL;
@@ -246,8 +256,10 @@ get_root_brick(const char *conffile, struct kfs_loadbrick *brick)
     if (priv == NULL) {
         KFS_RETURN(-1);
     }
+    kfs_oper = priv->brick_api->getfuncs();
+    fuse_oper = kfs2fuse_operations(kfs_oper, priv->private_data);
+    brick->oper = fuse_oper;
     brick->priv = priv;
-    brick->oper = priv->brick_api->getfuncs();
 
     KFS_RETURN(0);
 } 
@@ -267,9 +279,10 @@ del_root_brick(struct kfs_loadbrick *brick)
     KFS_ASSERT(brick != NULL);
     priv = brick->priv;
     dynhandle = priv->dload_handle;
-    priv->brick_api->halt();
+    priv->brick_api->halt(priv->private_data);
     priv = del_any_brick(priv);
     brick->priv = priv;
+    brick->oper = kfs2fuse_clean(brick->oper);
     ret = dlclose(dynhandle);
     if (ret != 0) {
         KFS_WARNING("Failed to close dynamically loaded library: %s",

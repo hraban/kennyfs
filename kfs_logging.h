@@ -1,7 +1,6 @@
 #ifndef KFS_LOGGING_H
 #define KFS_LOGGING_H
 
-#include <assert.h>
 #include <stdio.h>
 
 #include "kfs.h"
@@ -20,14 +19,6 @@
  * functions are defined. If NDEBUG is defined the default logging level is
  * WARNING, otherwise it is DEBUG.
  */
-
-#define KFS_ASSERT assert
-/* KFS_NASSERT is executed verbatim in NON-debugging mode. */
-#ifdef NDEBUG
-#  define KFS_NASSERT(x) x
-#else
-#  define KFS_NASSERT(X) ((void) 0)
-#endif
 
 #define kfs_do_nothing(...) ((void) (0))
 

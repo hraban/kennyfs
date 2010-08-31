@@ -24,6 +24,7 @@
 #include <sys/stat.h>
 
 #include "kfs.h"
+#include "kfs_api.h"
 #include "kfs_misc.h"
 #include "tcp_brick/connection.h"
 #include "tcp_brick/tcp_brick.h"
@@ -128,9 +129,15 @@ unserialise_stat(struct stat *stbuf, const uint32_t *intbuf)
     KFS_RETURN(stbuf);
 }
 
+/*
+ * KennyFS operation handlers.
+ */
+
 static int
-kenny_getattr(const char *fusepath, struct stat *stbuf)
+tcpc_getattr(const kfs_context_t co, const char *fusepath, struct stat *stbuf)
 {
+    (void) co;
+
     uint32_t intbuf[13];
     char resbuf[sizeof(intbuf)];
     char *operbuf = NULL;
@@ -162,8 +169,10 @@ kenny_getattr(const char *fusepath, struct stat *stbuf)
  * Read the target of a symlink.
  */
 static int
-kenny_readlink(const char *path, char *buf, size_t size)
+tcpc_readlink(const kfs_context_t co, const char *path, char *buf, size_t size)
 {
+    (void) co;
+
     char *operbuf = NULL;
     int ret = 0;
     size_t pathlen = 0;
@@ -188,8 +197,10 @@ kenny_readlink(const char *path, char *buf, size_t size)
 }
 
 static int
-kenny_mknod(const char *path, mode_t mode, dev_t dev)
+tcpc_mknod(const kfs_context_t co, const char *path, mode_t mode, dev_t dev)
 {
+    (void) co;
+
     char *operbuf = NULL;
     int ret = 0;
     size_t pathlen = 0;
@@ -218,8 +229,10 @@ kenny_mknod(const char *path, mode_t mode, dev_t dev)
 }
 
 static int
-kenny_mkdir(const char *path, mode_t mode)
+tcpc_mkdir(const kfs_context_t co, const char *path, mode_t mode)
 {
+    (void) co;
+
     char *operbuf = NULL;
     int ret = 0;
     size_t pathlen = 0;
@@ -243,8 +256,10 @@ kenny_mkdir(const char *path, mode_t mode)
 }
 
 static int
-kenny_unlink(const char *path)
+tcpc_unlink(const kfs_context_t co, const char *path)
 {
+    (void) co;
+
     char *operbuf = NULL;
     size_t pathlen = 0;
     int ret = 0;
@@ -265,8 +280,10 @@ kenny_unlink(const char *path)
 }
 
 static int
-kenny_rmdir(const char *path)
+tcpc_rmdir(const kfs_context_t co, const char *path)
 {
+    (void) co;
+
     char *operbuf = NULL;
     size_t pathlen = 0;
     int ret = 0;
@@ -286,8 +303,10 @@ kenny_rmdir(const char *path)
 }
 
 static int
-kenny_symlink(const char *path1, const char *path2)
+tcpc_symlink(const kfs_context_t co, const char *path1, const char *path2)
 {
+    (void) co;
+
     char *operbuf = NULL;
     size_t path1len = 0;
     size_t path2len = 0;
@@ -317,8 +336,10 @@ kenny_symlink(const char *path1, const char *path2)
 }
 
 static int
-kenny_rename(const char *path1, const char *path2)
+tcpc_rename(const kfs_context_t co, const char *path1, const char *path2)
 {
+    (void) co;
+
     char *operbuf = NULL;
     size_t path1len = 0;
     size_t path2len = 0;
@@ -348,8 +369,10 @@ kenny_rename(const char *path1, const char *path2)
 }
 
 static int
-kenny_link(const char *path1, const char *path2)
+tcpc_link(const kfs_context_t co, const char *path1, const char *path2)
 {
+    (void) co;
+
     char *operbuf = NULL;
     size_t path1len = 0;
     size_t path2len = 0;
@@ -378,8 +401,10 @@ kenny_link(const char *path1, const char *path2)
 }
 
 static int
-kenny_chmod(const char *path, mode_t mode)
+tcpc_chmod(const kfs_context_t co, const char *path, mode_t mode)
 {
+    (void) co;
+
     char *operbuf = NULL;
     int ret = 0;
     size_t pathlen = 0;
@@ -403,8 +428,10 @@ kenny_chmod(const char *path, mode_t mode)
 }
 
 static int
-kenny_chown(const char *path, uid_t uid, gid_t gid)
+tcpc_chown(const kfs_context_t co, const char *path, uid_t uid, gid_t gid)
 {
+    (void) co;
+
     char *operbuf = NULL;
     int ret = 0;
     size_t pathlen = 0;
@@ -431,8 +458,10 @@ kenny_chown(const char *path, uid_t uid, gid_t gid)
 }
 
 static int
-kenny_truncate(const char *path, off_t offset)
+tcpc_truncate(const kfs_context_t co, const char *path, off_t offset)
 {
+    (void) co;
+
     char *operbuf = NULL;
     int ret = 0;
     size_t pathlen = 0;
@@ -456,8 +485,10 @@ kenny_truncate(const char *path, off_t offset)
 }
 
 static int
-kenny_open(const char *path, struct fuse_file_info *ffi)
+tcpc_open(const kfs_context_t co, const char *path, struct fuse_file_info *ffi)
 {
+    (void) co;
+
     char resbuf[9];
     char *operbuf = NULL;
     int ret = 0;
@@ -491,9 +522,10 @@ kenny_open(const char *path, struct fuse_file_info *ffi)
 }
 
 static int
-kenny_read(const char *path, char *buf, size_t nbyte, off_t offset, struct
-        fuse_file_info *ffi)
+tcpc_read(const kfs_context_t co, const char *path, char *buf, size_t nbyte,
+        off_t offset, struct fuse_file_info *ffi)
 {
+    (void) co;
     (void) path;
 
     char operbuf[20 + 6];
@@ -519,9 +551,10 @@ kenny_read(const char *path, char *buf, size_t nbyte, off_t offset, struct
 }
 
 static int
-kenny_write(const char *path, const char *buf, size_t nbyte, off_t offset,
-        struct fuse_file_info *ffi)
+tcpc_write(const kfs_context_t co, const char *path, const char *buf, size_t
+        nbyte, off_t offset, struct fuse_file_info *ffi)
 {
+    (void) co;
     (void) path;
 
     uint64_t val64 = 0;
@@ -548,8 +581,10 @@ kenny_write(const char *path, const char *buf, size_t nbyte, off_t offset,
 }
 
 static int
-kenny_release(const char *path, struct fuse_file_info *ffi)
+tcpc_release(const kfs_context_t co, const char *path, struct fuse_file_info
+        *ffi)
 {
+    (void) co;
     (void) path;
 
     char operbuf[8 + 6];
@@ -565,8 +600,11 @@ kenny_release(const char *path, struct fuse_file_info *ffi)
 }
 
 static int
-kenny_opendir(const char *path, struct fuse_file_info *ffi)
+tcpc_opendir(const kfs_context_t co, const char *path, struct fuse_file_info
+        *ffi)
 {
+    (void) co;
+
     void * const fh = &ffi->fh;
     char *operbuf = NULL;
     size_t pathlen = 0;
@@ -629,9 +667,10 @@ extract_dirent(char *resbuf, void *fusebuf, fuse_fill_dir_t filler)
 }
 
 static int
-kenny_readdir(const char *path, void *fusebuf, fuse_fill_dir_t filler, off_t
-        off, struct fuse_file_info *ffi)
+tcpc_readdir(const kfs_context_t co, const char *path, void *fusebuf,
+        fuse_fill_dir_t filler, off_t off, struct fuse_file_info *ffi)
 {
+    (void) co;
     (void) path;
 
     char *resbuf = NULL;
@@ -671,8 +710,10 @@ kenny_readdir(const char *path, void *fusebuf, fuse_fill_dir_t filler, off_t
 }
 
 static int
-kenny_releasedir(const char *path, struct fuse_file_info *ffi)
+tcpc_releasedir(const kfs_context_t co, const char *path, struct fuse_file_info
+        *ffi)
 {
+    (void) co;
     (void) path;
 
     char operbuf[8 + 6];
@@ -687,28 +728,28 @@ kenny_releasedir(const char *path, struct fuse_file_info *ffi)
     KFS_RETURN(ret);
 }
 
-static const struct fuse_operations handlers = {
-    .getattr = kenny_getattr,
-    .readlink = kenny_readlink,
-    .mknod = kenny_mknod,
-    .mkdir = kenny_mkdir,
-    .unlink = kenny_unlink,
-    .rmdir = kenny_rmdir,
-    .symlink = kenny_symlink,
-    .rename = kenny_rename,
-    .link = kenny_link,
-    .chmod = kenny_chmod,
-    .chown = kenny_chown,
-    .truncate = kenny_truncate,
-    .open = kenny_open,
-    .read = kenny_read,
-    .write = kenny_write,
+static const struct kfs_operations handlers = {
+    .getattr = tcpc_getattr,
+    .readlink = tcpc_readlink,
+    .mknod = tcpc_mknod,
+    .mkdir = tcpc_mkdir,
+    .unlink = tcpc_unlink,
+    .rmdir = tcpc_rmdir,
+    .symlink = tcpc_symlink,
+    .rename = tcpc_rename,
+    .link = tcpc_link,
+    .chmod = tcpc_chmod,
+    .chown = tcpc_chown,
+    .truncate = tcpc_truncate,
+    .open = tcpc_open,
+    .read = tcpc_read,
+    .write = tcpc_write,
     .statfs = NULL,
     .flush = NULL,
-    .release = kenny_release,
-    .opendir = kenny_opendir,
-    .readdir = kenny_readdir,
-    .releasedir = kenny_releasedir,
+    .release = tcpc_release,
+    .opendir = tcpc_opendir,
+    .readdir = tcpc_readdir,
+    .releasedir = tcpc_releasedir,
 };
 
 int
@@ -719,7 +760,7 @@ init_handlers(void)
     KFS_RETURN(0);
 }
 
-const struct fuse_operations *
+const struct kfs_operations *
 get_handlers(void)
 {
     KFS_ENTER();
