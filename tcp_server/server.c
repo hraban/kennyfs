@@ -33,7 +33,6 @@
  */
 struct kenny_conf {
     char *conffile;
-    char *brick;
     char *port;
 };
 
@@ -648,12 +647,11 @@ main_(int argc, char *argv[])
     KFS_INFO("Starting KennyFS version %s.", KFS_VERSION);
     handlers = get_handlers();
     /* Parse the command line. TODO: more flexible configuration. */
-    if (argc == 4) {
-        conf.brick = argv[1];
-        conf.conffile = argv[2];
-        conf.port = argv[3];
+    if (argc == 3) {
+        conf.conffile = argv[1];
+        conf.port = argv[2];
     } else {
-        KFS_ERROR("Error parsing commandline.");
+        KFS_ERROR("Usage: %s <conf-file> <port-number>", argv[0]);
         KFS_RETURN(-1);
     }
     /* 
