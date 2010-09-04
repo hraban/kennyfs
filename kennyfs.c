@@ -14,6 +14,7 @@
 
 #include "kfs.h"
 #include "kfs_api.h"
+#include "kfs_fuseoperglue.h"
 #include "kfs_loadbrick.h"
 #include "kfs_misc.h"
 
@@ -93,6 +94,7 @@ static int
 main_(int argc, char *argv[])
 {
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
+    const struct fuse_operations *fuse_oper = NULL;
     struct kenny_conf conf;
     struct kfs_loadbrick brick;
     int ret = 0;
@@ -118,9 +120,11 @@ main_(int argc, char *argv[])
         fuse_opt_free_args(&args);
         KFS_RETURN(-1);
     }
+    fuse_oper = kfs2fuse_operations(brick.oper, brick.private_data);
     /* Run the brick and start FUSE. */
-    ret = fuse_main(args.argc, args.argv, brick.oper, NULL);
+    ret = fuse_main(args.argc, args.argv, fuse_oper, NULL);
     /* Clean everything up. */
+    fuse_oper = kfs2fuse_clean(fuse_oper);
     del_root_brick(&brick);
     fuse_opt_free_args(&args);
 

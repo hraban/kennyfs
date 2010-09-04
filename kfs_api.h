@@ -27,6 +27,7 @@
  * Also see the FUSE documentation.
  */
 typedef struct fuse_context * kfs_context_t;
+typedef struct fuse_context kfs_context_t_;
 
 /**
  * All filesystem operations that can be used by a brick to communicate with a

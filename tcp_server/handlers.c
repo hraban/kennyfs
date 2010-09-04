@@ -19,13 +19,18 @@
 #include <fuse_opt.h>
 #include <string.h>
 #include <sys/stat.h>
+/* Required for get[gup]id(). */
+#include <sys/types.h>
+#include <unistd.h>
 
 #include "kfs_misc.h"
 #include "kfs_memory.h"
 #include "tcp_brick/tcp_brick.h"
 #include "tcp_server/server.h"
 
-static const struct fuse_operations *oper = NULL;
+static const struct kfs_operations *oper = NULL;
+/** State of the subvolume as returned by init(). */
+static void *private_data = NULL;
 /**
  * Number of bytes to allocate, initially, during opendir(), for the next
  * readdir(). If during readdir() it turns out more space is needed, more space
@@ -153,6 +158,23 @@ serialise_stat(uint32_t *intbuf, const struct stat *stbuf)
 }
 
 /**
+ * Initialise a context for the calling handler. Reentrant, does not fail.
+ * Returns the context.
+ */
+static kfs_context_t
+kfs_init_context(kfs_context_t context)
+{
+    KFS_ENTER();
+
+    context->uid = getuid();
+    context->gid = getgid();
+    context->pid = getpid();
+    context->private_data = private_data;
+
+    KFS_RETURN(context);
+}
+
+/**
  * Handle a getattr operation. The argument message is the raw pathname. The
  * return message is a struct stat serialised by the serialise_stat() routine.
  */
@@ -166,14 +188,15 @@ handle_getattr(client_t c, const char *rawop, size_t opsize)
     size_t bodysize = 0;
     int ret = 0;
     struct stat stbuf;
+    kfs_context_t_ context;
 
     KFS_ENTER();
 
+    kfs_init_context(&context);
     if (oper->getattr == NULL) {
-        /* Not implemented in backend. */
         ret = -ENOSYS;
     } else {
-        ret = oper->getattr(rawop, &stbuf);
+        ret = oper->getattr(&context, rawop, &stbuf);
     }
     KFS_ASSERT(ret <= 0);
     if (ret == 0) {
@@ -202,13 +225,16 @@ handle_readlink(client_t c, const char *rawop, size_t opsize)
     int ret = 0;
     size_t bodysize = 0;
     char resultbuf[PATHBUF_SIZE + 8];
+    kfs_context_t_ context;
 
     KFS_ENTER();
 
+    kfs_init_context(&context);
     if (oper->readlink == NULL) {
         ret = -ENOSYS;
     } else {
-        ret = oper->readlink(rawop, resultbuf + 8, sizeof(resultbuf) - 8);
+        ret = oper->readlink(&context, rawop, resultbuf + 8, sizeof(resultbuf) -
+                8);
     }
     KFS_ASSERT(ret <= 0);
     if (ret == 0) {
@@ -236,16 +262,18 @@ handle_mknod(client_t c, const char *rawop, size_t opsize)
     uint32_t mode_serialised = 0;
     mode_t mode;
     int ret = 0;
+    kfs_context_t_ context;
 
     KFS_ENTER();
 
+    kfs_init_context(&context);
     memcpy(&mode_serialised, rawop, 4);
     KFS_ASSERT(sizeof(uint32_t) >= sizeof(mode_t));
     mode = ntohl(mode_serialised); 
     if (oper->mknod == NULL) {
         ret = -ENOSYS;
     } else {
-        ret = oper->mknod(rawop + 4, mode, 0);
+        ret = oper->mknod(&context, rawop + 4, mode, 0);
     }
     KFS_ASSERT(ret <= 0);
     ret = send_reply(c, ret, resultbuf, 0);
@@ -267,16 +295,18 @@ handle_mkdir(client_t c, const char *rawop, size_t opsize)
     uint32_t mode_serialised = 0;
     mode_t mode;
     int ret = 0;
+    kfs_context_t_ context;
 
     KFS_ENTER();
 
+    kfs_init_context(&context);
     memcpy(&mode_serialised, rawop, 4);
     KFS_ASSERT(sizeof(uint32_t) >= sizeof(mode_t));
     mode = ntohl(mode_serialised); 
     if (oper->mkdir == NULL) {
         ret = -ENOSYS;
     } else {
-        ret = oper->mkdir(rawop + 4, mode);
+        ret = oper->mkdir(&context, rawop + 4, mode);
     }
     KFS_ASSERT(ret <= 0);
     ret = send_reply(c, ret, resultbuf, 0);
@@ -295,13 +325,15 @@ handle_unlink(client_t c, const char *rawop, size_t opsize)
 
     char resultbuf[8];
     int ret = 0;
+    kfs_context_t_ context;
 
     KFS_ENTER();
 
+    kfs_init_context(&context);
     if (oper->unlink == NULL) {
         ret = -ENOSYS;
     } else {
-        ret = oper->unlink(rawop);
+        ret = oper->unlink(&context, rawop);
     }
     KFS_ASSERT(ret <= 0);
     ret = send_reply(c, ret, resultbuf, 0);
@@ -320,13 +352,15 @@ handle_rmdir(client_t c, const char *rawop, size_t opsize)
 
     char resultbuf[8];
     int ret = 0;
+    kfs_context_t_ context;
 
     KFS_ENTER();
 
+    kfs_init_context(&context);
     if (oper->rmdir == NULL) {
         ret = -ENOSYS;
     } else {
-        ret = oper->rmdir(rawop);
+        ret = oper->rmdir(&context, rawop);
     }
     KFS_ASSERT(ret <= 0);
     ret = send_reply(c, ret, resultbuf, 0);
@@ -350,9 +384,11 @@ handle_symlink(client_t c, const char *rawop, size_t opsize)
     const char *path1 = NULL;
     const char *path2 = NULL;
     int ret = 0;
+    kfs_context_t_ context;
 
     KFS_ENTER();
 
+    kfs_init_context(&context);
     if (oper->symlink == NULL) {
         ret = -ENOSYS;
     } else {
@@ -365,7 +401,7 @@ handle_symlink(client_t c, const char *rawop, size_t opsize)
         }
         path1 = rawop + 4;
         path2 = rawop + 4 + path1len + 1;
-        ret = oper->symlink(path1, path2);
+        ret = oper->symlink(&context, path1, path2);
     }
     KFS_ASSERT(ret <= 0);
     ret = send_reply(c, ret, resultbuf, 0);
@@ -388,9 +424,11 @@ handle_rename(client_t c, const char *rawop, size_t opsize)
     const char *path1 = NULL;
     const char *path2 = NULL;
     int ret = 0;
+    kfs_context_t_ context;
 
     KFS_ENTER();
 
+    kfs_init_context(&context);
     if (oper->rename == NULL) {
         ret = -ENOSYS;
     } else {
@@ -403,7 +441,7 @@ handle_rename(client_t c, const char *rawop, size_t opsize)
         }
         path1 = rawop + 4;
         path2 = rawop + 4 + path1len + 1;
-        ret = oper->rename(path1, path2);
+        ret = oper->rename(&context, path1, path2);
     }
     KFS_ASSERT(ret <= 0);
     ret = send_reply(c, ret, resultbuf, 0);
@@ -426,9 +464,11 @@ handle_link(client_t c, const char *rawop, size_t opsize)
     const char *path1 = NULL;
     const char *path2 = NULL;
     int ret = 0;
+    kfs_context_t_ context;
 
     KFS_ENTER();
 
+    kfs_init_context(&context);
     if (oper->link == NULL) {
         ret = -ENOSYS;
     } else {
@@ -441,7 +481,7 @@ handle_link(client_t c, const char *rawop, size_t opsize)
         }
         path1 = rawop + 4;
         path2 = rawop + 4 + path1len + 1;
-        ret = oper->link(path1, path2);
+        ret = oper->link(&context, path1, path2);
     }
     KFS_ASSERT(ret <= 0);
     ret = send_reply(c, ret, resultbuf, 0);
@@ -463,16 +503,18 @@ handle_chmod(client_t c, const char *rawop, size_t opsize)
     uint32_t mode_serialised = 0;
     mode_t mode;
     int ret = 0;
+    kfs_context_t_ context;
 
     KFS_ENTER();
 
+    kfs_init_context(&context);
     memcpy(&mode_serialised, rawop, 4);
     KFS_ASSERT(sizeof(uint32_t) >= sizeof(mode_t));
     mode = ntohl(mode_serialised); 
     if (oper->chmod == NULL) {
         ret = -ENOSYS;
     } else {
-        ret = oper->chmod(rawop + 4, mode);
+        ret = oper->chmod(&context, rawop + 4, mode);
     }
     KFS_ASSERT(ret <= 0);
     ret = send_reply(c, ret, resultbuf, 0);
@@ -497,9 +539,11 @@ handle_chown(client_t c, const char *rawop, size_t opsize)
     uid_t uid = 0;
     gid_t gid = 0;
     int ret = 0;
+    kfs_context_t_ context;
 
     KFS_ENTER();
 
+    kfs_init_context(&context);
     memcpy(&uid_serialised, rawop, 4);
     memcpy(&gid_serialised, rawop, 4);
     KFS_ASSERT(sizeof(uint32_t) >= sizeof(uid_t));
@@ -509,7 +553,7 @@ handle_chown(client_t c, const char *rawop, size_t opsize)
     if (oper->chown == NULL) {
         ret = -ENOSYS;
     } else {
-        ret = oper->chown(rawop + 8, uid, gid);
+        ret = oper->chown(&context, rawop + 8, uid, gid);
     }
     KFS_ASSERT(ret <= 0);
     ret = send_reply(c, ret, resultbuf, 0);
@@ -531,16 +575,18 @@ handle_truncate(client_t c, const char *rawop, size_t opsize)
     uint64_t offset_serialised = 0;
     off_t offset = 0;
     int ret = 0;
+    kfs_context_t_ context;
 
     KFS_ENTER();
 
+    kfs_init_context(&context);
     memcpy(&offset_serialised, rawop, 8);
     KFS_ASSERT(sizeof(uint64_t) >= sizeof(off_t));
     offset = ntohll(offset_serialised);
     if (oper->truncate == NULL) {
         ret = -ENOSYS;
     } else {
-        ret = oper->truncate(rawop + 8, offset);
+        ret = oper->truncate(&context, rawop + 8, offset);
     }
     KFS_ASSERT(ret <= 0);
     ret = send_reply(c, ret, resultbuf, 0);
@@ -574,16 +620,18 @@ handle_open(client_t c, const char *rawop, size_t opsize)
     size_t bodysize = 0;
     int ret = 0;
     uint32_t val32 = 0;
+    kfs_context_t_ context;
 
     KFS_ENTER();
 
+    kfs_init_context(&context);
     if (oper->open == NULL) {
         ret = -ENOSYS;
     } else {
         memset(&ffi, 0, sizeof(ffi));
         memcpy(&val32, rawop, 4);
         ffi.flags = ntohl(val32);
-        ret = oper->open(rawop + 4, &ffi);
+        ret = oper->open(&context, rawop + 4, &ffi);
     }
     KFS_ASSERT(ret <= 0);
     if (ret == 0) {
@@ -622,9 +670,11 @@ handle_read(client_t c, const char *rawop, size_t opsize)
     size_t len = 0;
     int ret = 0;
     uint32_t val32 = 0;
+    kfs_context_t_ context;
 
     KFS_ENTER();
 
+    kfs_init_context(&context);
     if (oper->read == NULL) {
         ret = -ENOSYS;
     } else {
@@ -638,7 +688,7 @@ handle_read(client_t c, const char *rawop, size_t opsize)
         if (resultbuf == NULL) {
             ret = -ENOBUFS;
         } else {
-            ret = oper->read(NULL, resultbuf + 8, len, offset, &ffi);
+            ret = oper->read(&context, NULL, resultbuf + 8, len, offset, &ffi);
         }
     }
     if (ret < 0) {
@@ -671,9 +721,11 @@ handle_write(client_t c, const char *rawop, size_t opsize)
     uint64_t offset = 0;
     int ret = 0;
     size_t writelen = 0;
+    kfs_context_t_ context;
 
     KFS_ENTER();
 
+    kfs_init_context(&context);
     if (oper->write == NULL) {
         ret = -ENOSYS;
     } else {
@@ -685,7 +737,7 @@ handle_write(client_t c, const char *rawop, size_t opsize)
         if (resultbuf == NULL) {
             ret = -ENOBUFS;
         } else {
-            ret = oper->write(NULL, rawop + 16, writelen, offset, &ffi);
+            ret = oper->write(&context, NULL, rawop + 16, writelen, offset, &ffi);
         }
     }
     ret = send_reply(c, ret, resultbuf, 0);
@@ -703,9 +755,11 @@ handle_release(client_t c, const char *rawop, size_t opsize)
     char resultbuf[8];
     struct fuse_file_info ffi;
     int ret = 0;
+    kfs_context_t_ context;
 
     KFS_ENTER();
 
+    kfs_init_context(&context);
     if (opsize != 8) {
         report_error(c, EINVAL);
         KFS_RETURN(-1);
@@ -714,7 +768,7 @@ handle_release(client_t c, const char *rawop, size_t opsize)
         ret = -ENOSYS;
     } else {
         memcpy(&ffi.fh, rawop, 8);
-        ret = oper->release(NULL, &ffi);
+        ret = oper->release(&context, NULL, &ffi);
     }
     ret = send_reply(c, ret, resultbuf, 0);
 
@@ -732,9 +786,11 @@ handle_fsync(client_t c, const char *rawop, size_t opsize)
     char resultbuf[8];
     struct fuse_file_info ffi;
     int ret = 0;
+    kfs_context_t_ context;
 
     KFS_ENTER();
 
+    kfs_init_context(&context);
     if (opsize != 9) {
         report_error(c, EINVAL);
         KFS_RETURN(-1);
@@ -743,7 +799,7 @@ handle_fsync(client_t c, const char *rawop, size_t opsize)
         ret = -ENOSYS;
     } else {
         memcpy(&ffi.fh, rawop, 8);
-        ret = oper->fsync(NULL, rawop[8], &ffi);
+        ret = oper->fsync(&context, NULL, rawop[8], &ffi);
     }
     ret = send_reply(c, ret, resultbuf, 0);
 
@@ -765,9 +821,11 @@ handle_opendir(client_t c, const char *rawop, size_t opsize)
     char resultbuf[8 + 8];
     dirfh_t * dirfh = NULL;
     int ret = 0;
+    kfs_context_t_ context;
 
     KFS_ENTER();
 
+    kfs_init_context(&context);
     if (oper->opendir == NULL) {
         report_error(c, ENOSYS);
         KFS_RETURN(0);
@@ -787,7 +845,7 @@ handle_opendir(client_t c, const char *rawop, size_t opsize)
         KFS_RETURN(-1);
     }
     dirfh->readdir.buf = dirfh->readdir._realbuf + 8;
-    ret = oper->opendir(rawop, &dirfh->ffi);
+    ret = oper->opendir(&context, rawop, &dirfh->ffi);
     /* 8 bytes are reserved for the fh. If it is smaller, no problem. */
     KFS_ASSERT(sizeof(dirfh) <= 8);
     memcpy(resultbuf + 8, &dirfh, sizeof(dirfh));
@@ -875,9 +933,11 @@ handle_readdir(client_t c, const char *rawop, size_t opsize)
     dirfh_t *dirfh = NULL;
     readdir_fh_t *rdfh = NULL;
     int ret = 0;
+    kfs_context_t_ context;
 
     KFS_ENTER();
 
+    kfs_init_context(&context);
     if (opsize != 16) {
         report_error(c, EINVAL);
         KFS_RETURN(-1);
@@ -890,7 +950,7 @@ handle_readdir(client_t c, const char *rawop, size_t opsize)
     rdfh = &(dirfh->readdir);
     memcpy(&off, rawop + 8, 8);
     off = ntohll(off);
-    ret = oper->readdir(NULL, rdfh, readdir_filler, off, &(dirfh->ffi));
+    ret = oper->readdir(&context, NULL, rdfh, readdir_filler, off, &(dirfh->ffi));
     /*
      * This is where the 8 hidden leading allocated bytes in the buffer come in
      * handy:
@@ -914,9 +974,11 @@ handle_releasedir(client_t c, const char *rawop, size_t opsize)
     char resultbuf[8];
     dirfh_t *dirfh = NULL;
     int ret = 0;
+    kfs_context_t_ context;
 
     KFS_ENTER();
 
+    kfs_init_context(&context);
     if (opsize != 8) {
         report_error(c, EINVAL);
         KFS_RETURN(-1);
@@ -926,7 +988,7 @@ handle_releasedir(client_t c, const char *rawop, size_t opsize)
         KFS_RETURN(0);
     }
     memcpy(&dirfh, rawop, sizeof(dirfh));
-    ret = oper->releasedir(NULL, &(dirfh->ffi));
+    ret = oper->releasedir(&context, NULL, &(dirfh->ffi));
     dirfh->readdir.buf = KFS_FREE(dirfh->readdir._realbuf);
     dirfh = KFS_FREE(dirfh);
     ret = send_reply(c, ret, resultbuf, 0);
@@ -986,11 +1048,12 @@ static const handler_t handlers[KFS_OPID_MAX_] = {
 };
 
 void
-init_handlers(const struct fuse_operations *kenny_oper)
+init_handlers(const struct kfs_operations *kfs_oper, void *subv_state)
 {
     KFS_ENTER();
 
-    oper = kenny_oper;
+    oper = kfs_oper;
+    private_data = subv_state;
 
     KFS_RETURN();
 }

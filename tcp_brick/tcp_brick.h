@@ -25,10 +25,8 @@
  * - Size of the body of the reply as a uint32_t (4 bytes).
  * - The body of the reply, if any.
  * 
- * The return value is whatever is returned by the backend brick, which is
- * defined as "negated errno" in FUSE, although here we use the absolute
- * (because of the unsigned int). TODO: This is a problem because some
- * operations (read()) return positive values as well.
+ * TODO: update documentation about return value (iirc, it is cast from int to a
+ * uint32_t and then back to int).
  *
  * Note that there is NO authentication and NO encryption, so please only start
  * this in a trusted environment. All network operations are non-blocking but
@@ -83,8 +81,6 @@ enum fuse_op_id {
     KFS_OPID_READDIR,
     KFS_OPID_RELEASEDIR,
     KFS_OPID_FSYNCDIR,
-    KFS_OPID_DESTROY,
-    KFS_OPID_INIT,
     KFS_OPID_ACCESS,
     KFS_OPID_CREATE,
     KFS_OPID_FTRUNCATE,

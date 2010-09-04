@@ -6,7 +6,7 @@
 
 typedef int (* handler_t)(client_t c, const char *rawop, size_t opsize);
 
-void init_handlers(const struct fuse_operations *kenny_oper);
+void init_handlers(const struct kfs_operations *oper, void *private_data);
 const handler_t * get_handlers(void);
 
 #endif

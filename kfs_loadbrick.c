@@ -22,7 +22,6 @@
 #include "kfs_logging.h"
 #include "kfs_memory.h"
 #include "kfs_misc.h"
-#include "kfs_fuseoperglue.h"
 
 enum {
     BRICK_PASS,
@@ -226,9 +225,7 @@ int
 get_root_brick(const char *conffile, struct kfs_loadbrick *brick)
 {
     /** The operation handlers as per the KennyFS API. */
-    const struct kfs_operations *kfs_oper = NULL;
-    /** The operation handlers as per the FUSE API. */
-    const struct fuse_operations *fuse_oper = NULL;
+    const struct kfs_operations *oper = NULL;
     struct kfs_loadbrick_priv *priv = NULL;
     const char *homedir = NULL;
     char *kfsconf = NULL;
@@ -256,10 +253,10 @@ get_root_brick(const char *conffile, struct kfs_loadbrick *brick)
     if (priv == NULL) {
         KFS_RETURN(-1);
     }
-    kfs_oper = priv->brick_api->getfuncs();
-    fuse_oper = kfs2fuse_operations(kfs_oper, priv->private_data);
-    brick->oper = fuse_oper;
-    brick->priv = priv;
+    oper = priv->brick_api->getfuncs();
+    brick->oper = oper;
+    brick->private_data = priv->private_data;
+    brick->_lbpriv = priv;
 
     KFS_RETURN(0);
 } 
@@ -277,12 +274,11 @@ del_root_brick(struct kfs_loadbrick *brick)
     KFS_ENTER();
 
     KFS_ASSERT(brick != NULL);
-    priv = brick->priv;
+    priv = brick->_lbpriv;
     dynhandle = priv->dload_handle;
     priv->brick_api->halt(priv->private_data);
     priv = del_any_brick(priv);
-    brick->priv = priv;
-    brick->oper = kfs2fuse_clean(brick->oper);
+    brick->_lbpriv = priv;
     ret = dlclose(dynhandle);
     if (ret != 0) {
         KFS_WARNING("Failed to close dynamically loaded library: %s",

@@ -645,7 +645,6 @@ main_(int argc, char *argv[])
     KFS_ASSERT(sizeof(uint16_t) == 2 && sizeof(uint32_t) == 4);
     ret = 0;
     KFS_INFO("Starting KennyFS version %s.", KFS_VERSION);
-    handlers = get_handlers();
     /* Parse the command line. TODO: more flexible configuration. */
     if (argc == 3) {
         conf.conffile = argv[1];
@@ -667,7 +666,8 @@ main_(int argc, char *argv[])
     if (ret == -1) {
         KFS_RETURN(-1);
     }
-    init_handlers(brick.oper);
+    init_handlers(brick.oper, brick.private_data);
+    handlers = get_handlers();
     ret = run_daemon(conf.port);
     /* Clean everything up. */
     del_root_brick(&brick);

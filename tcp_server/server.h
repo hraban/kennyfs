@@ -2,7 +2,9 @@
 #define KENNYFS_NETWORK_SERVER_H
 
 #include <stdlib.h>
+
 #include "kfs.h"
+#include "kfs_api.h"
 
 /**
  * Node in a linked list of connected network clients.
@@ -40,6 +42,8 @@ struct client_node {
     int sockfd;
     /** Set to true once a client is recognized as speaking the protocol. */
     uint_t got_sop;
+    /** Context of the current operation. Reset before every handler call. */
+    kfs_context_t *context;
 };
 
 typedef struct client_node *client_t;
