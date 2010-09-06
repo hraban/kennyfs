@@ -224,6 +224,8 @@ kfs2fuse_operations(const struct kfs_operations *kfs_oper,
 const struct fuse_operations *
 kfs2fuse_clean(const struct fuse_operations *o)
 {
+    KFS_NASSERT((void) o);
+
     KFS_ENTER();
 
     KFS_ASSERT(oper != NULL && o == &fuse_oper);

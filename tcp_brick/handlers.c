@@ -48,6 +48,9 @@ const size_t READDIR_BUFSIZE = 1000000;
  * result message (0 on error). However, if it is NULL, the caller is expected
  * to be certain of the result size: if it differs from resbufsize, it is
  * considered an error.
+ *
+ * TODO: Once a clear usage pattern of this function, the buffers and the
+ * protocol involved has emerged this API should be simplified.
  */
 static int
 do_operation_wrapper(enum fuse_op_id id, char *operbuf, size_t operbufsize,
@@ -744,12 +747,31 @@ static const struct kfs_operations handlers = {
     .open = tcpc_open,
     .read = tcpc_read,
     .write = tcpc_write,
-    .statfs = NULL,
-    .flush = NULL,
+    .statfs = nosys_statfs,
+    .flush = nosys_flush,
     .release = tcpc_release,
+    .fsync = nosys_fsync,
+#ifdef KFS_USE_XATTR
+    .setxattr = nosys_setxattr,
+    .getxattr = nosys_getxattr,
+    .listxattr = nosys_listxattr,
+    .removexattr = nosys_removexattr,
+#endif
     .opendir = tcpc_opendir,
     .readdir = tcpc_readdir,
     .releasedir = tcpc_releasedir,
+    .fsyncdir = nosys_fsyncdir,
+    .access = nosys_access,
+    .create = nosys_create,
+    .ftruncate = nosys_ftruncate,
+    .fgetattr = nosys_fgetattr,
+    .lock = nosys_lock,
+    .utimens = nosys_utimens,
+    .bmap = nosys_bmap,
+#if FUSE_VERSION >= 28
+    .ioctl = nosys_ioctl,
+    .poll = nosys_poll,
+#endif
 };
 
 int

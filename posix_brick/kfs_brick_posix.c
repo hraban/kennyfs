@@ -712,6 +712,11 @@ static const struct kfs_operations posix_oper = {
     .fgetattr = posix_fgetattr,
     .lock = nosys_lock,
     .utimens = posix_utimens,
+    .bmap = nosys_bmap,
+#if FUSE_VERSION >= 28
+    .ioctl = nosys_ioctl,
+    .poll = nosys_poll,
+#endif
 };
 
 /**

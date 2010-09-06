@@ -29,9 +29,6 @@ pass_getattr(const kfs_context_t co, const char *path, struct stat *stbuf)
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->getattr == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->getattr(co, path, stbuf);
 
     KFS_RETURN(ret);
@@ -43,14 +40,11 @@ pass_readlink(const kfs_context_t co, const char *path, char *buf, size_t
 {
     struct kfs_subvolume * const subv = co->private_data;
     const struct kfs_operations * const oper = subv->oper;
-    ssize_t ret = 0;
+    int ret = 0;
 
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->readlink == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->readlink(co, path, buf, size);
 
     KFS_RETURN(ret);
@@ -66,9 +60,6 @@ pass_mknod(const kfs_context_t co, const char *path, mode_t mode, dev_t dev)
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->mknod == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->mknod(co, path, mode, dev);
 
     KFS_RETURN(ret);
@@ -84,9 +75,6 @@ pass_truncate(const kfs_context_t co, const char *path, off_t offset)
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->truncate == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->truncate(co, path, offset);
 
     KFS_RETURN(ret);
@@ -102,9 +90,6 @@ pass_open(const kfs_context_t co, const char *path, struct fuse_file_info *fi)
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->open == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->open(co, path, fi);
 
     KFS_RETURN(ret);
@@ -120,9 +105,6 @@ pass_unlink(const kfs_context_t co, const char *path)
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->unlink == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->unlink(co, path);
 
     KFS_RETURN(ret);
@@ -138,9 +120,6 @@ pass_rmdir(const kfs_context_t co, const char *path)
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->rmdir == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->rmdir(co, path);
 
     KFS_RETURN(ret);
@@ -159,9 +138,6 @@ pass_symlink(const kfs_context_t co, const char *path1, const char *path2)
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->symlink == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->symlink(co, path1, path2);
 
     KFS_RETURN(ret);
@@ -177,9 +153,6 @@ pass_rename(const kfs_context_t co, const char *from, const char *to)
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->rename == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->rename(co, from, to);
 
     KFS_RETURN(ret);
@@ -195,9 +168,6 @@ pass_link(const kfs_context_t co, const char *from, const char *to)
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->link == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->link(co, from, to);
 
     KFS_RETURN(ret);
@@ -213,9 +183,6 @@ pass_chmod(const kfs_context_t co, const char *path, mode_t mode)
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->chmod == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->chmod(co, path, mode);
 
     KFS_RETURN(ret);
@@ -231,9 +198,6 @@ pass_chown(const kfs_context_t co, const char *path, uid_t uid, gid_t gid)
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->chown == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->chown(co, path, uid, gid);
 
     KFS_RETURN(ret);
@@ -250,9 +214,6 @@ pass_read(const kfs_context_t co, const char *path, char *buf, size_t size,
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->read == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->read(co, path, buf, size, offset, fi);
 
     KFS_RETURN(ret);
@@ -269,9 +230,6 @@ pass_write(const kfs_context_t co, const char *path, const char *buf, size_t
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->write == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->write(co, path, buf, size, offset, fi);
 
     KFS_RETURN(ret);
@@ -287,9 +245,6 @@ pass_statfs(const kfs_context_t co, const char *path, struct statvfs *stbuf)
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->statfs == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->statfs(co, path, stbuf);
 
     KFS_RETURN(ret);
@@ -306,9 +261,6 @@ pass_flush(const kfs_context_t co, const char *path, struct fuse_file_info
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->flush == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->flush(co, path, fi);
 
     KFS_RETURN(ret);
@@ -325,9 +277,6 @@ pass_release(const kfs_context_t co, const char *path, struct fuse_file_info
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->release == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->release(co, path, fi);
 
     KFS_RETURN(ret);
@@ -344,9 +293,6 @@ pass_fsync(const kfs_context_t co, const char *path, int isdatasync, struct
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->fsync == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->fsync(co, path, isdatasync, fi);
 
     KFS_RETURN(ret);
@@ -369,9 +315,6 @@ pass_setxattr(const kfs_context_t co, const char *path, const char *name,
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->setxattr == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->setxattr(co, path, name, value, size, flags);
 
     KFS_RETURN(ret);
@@ -388,9 +331,6 @@ pass_getxattr(const kfs_context_t co, const char *path, const char *name, char
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->getxattr == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->getxattr(co, path, name, value, size);
 
     KFS_RETURN(ret);
@@ -407,9 +347,6 @@ pass_listxattr(const kfs_context_t co, const char *path, char *list, size_t
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->listxattr == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->listxattr(co, path, list, size);
 
     KFS_RETURN(ret);
@@ -425,9 +362,6 @@ pass_removexattr(const kfs_context_t co, const char *path, const char *name)
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->removexattr == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->removexattr(co, path, name);
 
     KFS_RETURN(ret);
@@ -448,9 +382,6 @@ pass_mkdir(const kfs_context_t co, const char *path, mode_t mode)
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->mkdir == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->mkdir(co, path, mode);
 
     KFS_RETURN(ret);
@@ -467,9 +398,6 @@ pass_opendir(const kfs_context_t co, const char *path, struct fuse_file_info
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->opendir == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->opendir(co, path, fi);
 
     KFS_RETURN(ret);
@@ -489,9 +417,6 @@ pass_readdir(const kfs_context_t co, const char *path, void *buf,
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->readdir == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->readdir(co, path, buf, filler, offset, fi);
 
     KFS_RETURN(ret);
@@ -507,9 +432,6 @@ pass_releasedir(const kfs_context_t co, const char *path, struct fuse_file_info 
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->releasedir == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->releasedir(co, path, fi);
 
     KFS_RETURN(ret);
@@ -526,9 +448,6 @@ pass_fsyncdir(const kfs_context_t co, const char *path, int isdatasync, struct
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->fsyncdir == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->fsyncdir(co, path, isdatasync, fi);
 
     KFS_RETURN(ret);
@@ -544,9 +463,6 @@ pass_access(const kfs_context_t co, const char *path, int mask)
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->access == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->access(co, path, mask);
 
     KFS_RETURN(ret);
@@ -563,9 +479,6 @@ pass_create(const kfs_context_t co, const char *path, mode_t mode, struct
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->create == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->create(co, path, mode, fi);
 
     KFS_RETURN(ret);
@@ -582,9 +495,6 @@ pass_ftruncate(const kfs_context_t co, const char *path, off_t size, struct
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->ftruncate == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->ftruncate(co, path, size, fi);
     
     KFS_RETURN(ret);
@@ -601,9 +511,6 @@ pass_fgetattr(const kfs_context_t co, const char *path, struct stat *stbuf,
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->fgetattr == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->fgetattr(co, path, stbuf, fi);
 
     KFS_RETURN(ret);
@@ -620,9 +527,6 @@ pass_lock(const kfs_context_t co, const char *path, struct fuse_file_info *fi,
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->lock == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->lock(co, path, fi, cmd, lock);
 
     KFS_RETURN(ret);
@@ -639,9 +543,6 @@ pass_utimens(const kfs_context_t co, const char *path, const struct timespec
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->utimens == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->utimens(co, path, tvnano);
 
     KFS_RETURN(ret);
@@ -658,9 +559,6 @@ pass_bmap(const kfs_context_t co, const char *path, size_t blocksize, uint64_t
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->bmap == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->bmap(co, path, blocksize, idx);
 
     KFS_RETURN(ret);
@@ -678,9 +576,6 @@ pass_ioctl(const kfs_context_t co, const char *path, int cmd, void *arg,
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->ioctl == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->ioctl(co, path, cmd, arg, fi, flags, data);
 
     KFS_RETURN(ret);
@@ -699,9 +594,6 @@ pass_poll(const kfs_context_t co, const char *path, struct fuse_file_info *fi,
     KFS_ENTER();
 
     co->private_data = subv->private_data;
-    if (oper->poll == NULL) {
-        KFS_RETURN(-ENOSYS);
-    }
     ret = oper->poll(co, path, fi, ph, reventsp);
 
     KFS_RETURN(ret);

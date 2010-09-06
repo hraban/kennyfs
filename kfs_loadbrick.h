@@ -4,9 +4,11 @@
 #include <fuse.h>
 
 struct kfs_loadbrick {
-    const struct fuse_operations *oper;
+    const struct kfs_operations *oper;
+    /** State of the brick as returned by init(). */
+    void *private_data;
     /** Session data used to keep track of (and free) resources. */
-    void *priv;
+    void *_lbpriv;
 };
 
 int get_root_brick(const char *conffile, struct kfs_loadbrick *brick);
