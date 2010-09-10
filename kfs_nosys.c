@@ -3,9 +3,12 @@
  * code. Useful as filler for bricks that do not support some of the operations.
  */
 
+#define FUSE_USE_VERSION 29
+
 #include "kfs_nosys.h"
 
 #include <errno.h>
+#include <fuse.h>
 
 #include "kfs.h"
 #include "kfs_api.h"
