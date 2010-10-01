@@ -25,6 +25,10 @@ def scan(f, debuglevel=0):
     mallocs = {}
     totalmallocs = 0
     totalbytes = 0
+    # Total memory allocated (but not freed yet) at the current point.
+    concurrentbytes = 0
+    # Maximum memory allocated at any one point during execution.
+    maxconcurrentbytes = 0
     use_trace = True
     for linenum, line in enumerate(f):
         line = line.strip()
@@ -48,6 +52,8 @@ def scan(f, debuglevel=0):
                 memaddr = int(m.group(2), 16)
                 totalmallocs += 1
                 totalbytes += nbytes
+                concurrentbytes += nbytes
+                maxconcurrentbytes = max(maxconcurrentbytes, concurrentbytes)
                 if use_trace:
                     try:
                         func = stack[-1]
@@ -62,12 +68,16 @@ def scan(f, debuglevel=0):
             m = RE_FREE.search(line)
             if m is not None:
                 memaddr = int(m.group(1), 16)
-                del mallocs[memaddr]
+                malloc = mallocs.pop(memaddr)
+                concurrentbytes -= malloc[2]
                 continue
     if debuglevel > 0:
-        print >> sys.stderr, 'Total: %d bytes in %d allocations.' % (totalbytes,
-                totalmallocs)
-        print
+        print >> sys.stderr, (
+                'Total number of allocations: %d\n'
+                'Total number of bytes allocated: %d\n'
+                'Maximum number of bytes ever concurrently allocated: %d'
+                % (totalmallocs, totalbytes, maxconcurrentbytes))
+        print >> sys.stderr
     if mallocs:
         print 'Mallocs that were never freed:'
         print
