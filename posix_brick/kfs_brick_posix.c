@@ -76,6 +76,25 @@ posix_getattr(const kfs_context_t co, const char *fusepath, struct stat *stbuf)
 }
 
 static int
+posix_ftruncate(const kfs_context_t co, const char *path, off_t off, struct
+        fuse_file_info *fi)
+{
+    (void) co;
+    (void) path;
+
+    int ret = 0;
+
+    KFS_ENTER();
+
+    ret = ftruncate(fi->fh, off);
+    if (ret == -1) {
+        KFS_RETURN(-errno);
+    }
+
+    KFS_RETURN(0);
+}
+
+static int
 posix_fgetattr(const kfs_context_t co, const char *path, struct stat *stbuf,
         struct fuse_file_info *fi)
 {
@@ -417,6 +436,71 @@ posix_write(const kfs_context_t co, const char *fusepath, const char *buf,
     KFS_RETURN(0);
 }
 
+static int
+posix_statfs(const kfs_context_t co, const char *path, struct statvfs *buf)
+{
+    (void) co;
+
+    int ret = 0;
+
+    KFS_ENTER();
+
+    ret = statvfs(path, buf);
+    if (ret == -1) {
+        KFS_RETURN(-errno);
+    }
+
+    KFS_RETURN(0);
+}
+
+/**
+ * Flush the data from the filesystem buffers to the subvolume/OS.
+ *
+ * Does not imply a sync: just makes sure that the subvolume/OS knows about this
+ * data).
+ */
+static int
+posix_flush(const kfs_context_t co, const char *path, struct fuse_file_info *fi)
+{
+    (void) co;
+    (void) path;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    /** This is a POSIX equivalent to flushing data to a OS without closing. */
+    ret = dup(fi->fh);
+    if (ret == 0) {
+        ret = close(ret);
+        if (ret == 0) {
+            KFS_RETURN(0);
+        }
+    }
+
+    KFS_RETURN(-errno);
+}
+
+static int
+posix_release(const kfs_context_t co, const char *path, struct fuse_file_info
+        *fi)
+{
+    (void) co;
+    (void) path;
+
+    int ret = 0;
+
+    KFS_ENTER();
+
+    ret = close(fi->fh);
+    if (ret == -1) {
+        KFS_RETURN(-errno);
+    }
+
+    KFS_RETURN(0);
+}
+
+
+
 #ifdef KFS_USE_XATTR
 /*
  * Extended attributes.
@@ -692,9 +776,9 @@ static const struct kfs_operations posix_oper = {
     .open = posix_open,
     .read = posix_read,
     .write = posix_write,
-    .statfs = nosys_statfs,
-    .flush = nosys_flush,
-    .release = nosys_release,
+    .statfs = posix_statfs,
+    .flush = posix_flush,
+    .release = posix_release,
     .fsync = nosys_fsync,
 #if KFS_USE_XATTR
     .setxattr = posix_setxattr,
@@ -708,7 +792,7 @@ static const struct kfs_operations posix_oper = {
     .fsyncdir = nosys_fsyncdir,
     .access = nosys_access,
     .create = nosys_create,
-    .ftruncate = nosys_ftruncate,
+    .ftruncate = posix_ftruncate,
     .fgetattr = posix_fgetattr,
     .lock = nosys_lock,
     .utimens = posix_utimens,
