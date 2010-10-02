@@ -609,8 +609,6 @@ handle_open(client_t c, const char *rawop, size_t opsize)
 static int
 handle_read(client_t c, const char *rawop, size_t opsize)
 {
-    (void) opsize;
-
     struct fuse_file_info ffi;
     char *resultbuf = NULL;
     uint64_t offset = 0;
@@ -621,6 +619,10 @@ handle_read(client_t c, const char *rawop, size_t opsize)
 
     KFS_ENTER();
 
+    if (opsize != 8 + 4 + 8) {
+        report_error(c, EINVAL);
+        KFS_RETURN(-1);
+    }
     kfs_init_context(&context);
     memset(&ffi, 0, sizeof(ffi));
     memcpy(&ffi.fh, rawop, 8);
@@ -653,7 +655,7 @@ handle_read(client_t c, const char *rawop, size_t opsize)
  * - offset in the file (8 bytes, network order).
  * - data to write.
  *
- * The number of bytes to write is deducted from the total length of the
+ * The number of bytes to write is deduced from the total length of the
  * message.  The return message is empty.
  */
 static int
@@ -679,6 +681,32 @@ handle_write(client_t c, const char *rawop, size_t opsize)
     } else {
         ret = oper->write(&context, NULL, rawop + 16, writelen, offset, &ffi);
     }
+    ret = send_reply(c, ret, resultbuf, 0);
+
+    KFS_RETURN(ret);
+}
+
+/**
+ * Handle a flush operation. The argument message consists of the 8 byte
+ * filehandle. The return message is empty.
+ */
+static int
+handle_flush(client_t c, const char *rawop, size_t opsize)
+{
+    char resultbuf[8];
+    struct fuse_file_info ffi;
+    int ret = 0;
+    kfs_context_t_ context;
+
+    KFS_ENTER();
+
+    if (opsize != 8) {
+        report_error(c, EINVAL);
+        KFS_RETURN(-1);
+    }
+    kfs_init_context(&context);
+    memcpy(&ffi.fh, rawop, 8);
+    ret = oper->flush(&context, NULL, &ffi);
     ret = send_reply(c, ret, resultbuf, 0);
 
     KFS_RETURN(ret);
@@ -925,6 +953,102 @@ handle_releasedir(client_t c, const char *rawop, size_t opsize)
 }
 
 /**
+ * Handle a create operation. The argument message consists of argument flags
+ * (serialised as a uint32_t, network order) followed by the mode (serialised as
+ * a uint32_t), followed by the pathname.
+ *
+ * The return message is an 8-byte character array that will be used to uniquely
+ * identify this file in further operations (a file handler). It is, in fact,
+ * the fh element, but that is an implementation detail. This 8-byte identifier
+ * is followed by three flags, stored in one byte (total response: 9 bytes),
+ * from lsb to msb: direct_io (0), keep_cache (1), nonseekable (2, only if FUSE
+ * API version >= 2.9).
+ *
+ * TODO: The flags element is an int in the original struct, which is larger
+ * than a uint32_t on some architectures. Can that become a problem?
+ *
+ * TODO: Guarantee that a release() will follow, also for the backend's sake.
+ */
+static int
+handle_create(client_t c, const char *rawop, size_t opsize)
+{
+    (void) opsize;
+
+    struct fuse_file_info ffi;
+    char resultbuf[17];
+    size_t bodysize = 0;
+    int ret = 0;
+    uint32_t val32 = 0;
+    mode_t mode = 0;
+    kfs_context_t_ context;
+
+    KFS_ENTER();
+
+    kfs_init_context(&context);
+    memset(&ffi, 0, sizeof(ffi));
+    memcpy(&val32, rawop, 4);
+    ffi.flags = ntohl(val32);
+    memcpy(&val32, rawop + 4, 4);
+    mode = ntohl(val32);
+    ret = oper->create(&context, rawop + 8, mode, &ffi);
+    KFS_ASSERT(ret <= 0);
+    if (ret == 0) {
+        /* Success: send back the (raw) filehandle. */
+        bodysize = 9;
+        memcpy(resultbuf + 8, &ffi.fh, 8);
+        resultbuf[16] = (ffi.direct_io << 0) | (ffi.keep_cache << 1);
+#if FUSE_VERSION >= 29
+        resultbuf[16] |= ffi.non_seekable << 2;
+#endif
+    } else {
+        bodysize = 0;
+    }
+    ret = send_reply(c, ret, resultbuf, bodysize);
+
+    KFS_RETURN(ret);
+}
+
+/**
+ * Handle a fgetattr operation. The argument message is the filehandle. The
+ * return message is a struct stat serialised by the serialise_stat() routine.
+ * (See handle_getattr()).
+ */
+static int
+handle_fgetattr(client_t c, const char *rawop, size_t opsize)
+{
+    uint32_t intbuf[13];
+    char resbuf[8 + sizeof(intbuf)];
+    struct fuse_file_info ffi;
+    struct stat stbuf;
+    size_t bodysize = 0;
+    int ret = 0;
+    kfs_context_t_ context;
+
+    KFS_ENTER();
+
+    if (opsize != 8) {
+        report_error(c, EINVAL);
+        KFS_RETURN(-1);
+    }
+    kfs_init_context(&context);
+    memset(&ffi, 0, sizeof(ffi));
+    memcpy(&ffi.fh, rawop, 8);
+    ret = oper->fgetattr(&context, NULL, &stbuf, &ffi);
+    if (ret == 0) {
+        /* Call succeeded, also send the body. */
+        bodysize = sizeof(intbuf);
+        serialise_stat(intbuf, &stbuf);
+        memcpy(resbuf + 8, intbuf, bodysize);
+    } else {
+        /* Call failed, return only the error code. */
+        bodysize = 0;
+    }
+    ret = send_reply(c, ret, resbuf, bodysize);
+
+    KFS_RETURN(ret);
+}
+
+/**
  * Handles a QUIT message.
  */
 static int
@@ -962,16 +1086,35 @@ static const handler_t handlers[KFS_OPID_MAX_] = {
     [KFS_OPID_CHMOD] = handle_chmod,
     [KFS_OPID_CHOWN] = handle_chown,
     [KFS_OPID_TRUNCATE] = handle_truncate,
+    [KFS_OPID_UTIME] = NULL,
     [KFS_OPID_OPEN] = handle_open,
     [KFS_OPID_READ] = handle_read,
     [KFS_OPID_WRITE] = handle_write,
     [KFS_OPID_STATFS] = NULL,
-    [KFS_OPID_FLUSH] = NULL, /* TODO: Check if this needs a handler. */
+    [KFS_OPID_FLUSH] = handle_flush,
     [KFS_OPID_RELEASE] = handle_release,
     [KFS_OPID_FSYNC] = handle_fsync,
+#ifdef KFS_USE_XATTR
+    [KFS_OPID_SETXATTR] = NULL,
+    [KFS_OPID_GETXATTR] = NULL,
+    [KFS_OPID_LISTXATTR] = NULL,
+    [KFS_OPID_REMOVEXATTR] = NULL,
+#endif
     [KFS_OPID_OPENDIR] = handle_opendir,
     [KFS_OPID_READDIR] = handle_readdir,
     [KFS_OPID_RELEASEDIR] = handle_releasedir,
+    [KFS_OPID_FSYNCDIR] = NULL,
+    [KFS_OPID_ACCESS] = NULL,
+    [KFS_OPID_CREATE] = handle_create,
+    [KFS_OPID_FTRUNCATE] = NULL,
+    [KFS_OPID_FGETATTR] = handle_fgetattr,
+    [KFS_OPID_LOCK] = NULL,
+    [KFS_OPID_UTIMENS] = NULL,
+    [KFS_OPID_BMAP] = NULL,
+#if FUSE_VERSION >= 28
+    [KFS_OPID_IOCTL] = NULL,
+    [KFS_OPID_POLL] = NULL,
+#endif
     [KFS_OPID_QUIT] = handle_quit,
 };
 

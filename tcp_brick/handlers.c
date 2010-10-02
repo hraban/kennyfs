@@ -584,6 +584,24 @@ tcpc_write(const kfs_context_t co, const char *path, const char *buf, size_t
 }
 
 static int
+tcpc_flush(const kfs_context_t co, const char *path, struct fuse_file_info *ffi)
+{
+    (void) co;
+    (void) path;
+
+    char operbuf[8 + 6];
+    int ret = 0;
+
+    KFS_ENTER();
+
+    /* The file handle. */
+    memcpy(operbuf + 6, &ffi->fh, 8);
+    ret = do_operation_wrapper(KFS_OPID_FLUSH, operbuf, 8, NULL, 0, NULL);
+
+    KFS_RETURN(ret);
+}
+
+static int
 tcpc_release(const kfs_context_t co, const char *path, struct fuse_file_info
         *ffi)
 {
@@ -731,6 +749,74 @@ tcpc_releasedir(const kfs_context_t co, const char *path, struct fuse_file_info
     KFS_RETURN(ret);
 }
 
+static int
+tcpc_create(const kfs_context_t co, const char *path, mode_t mode, struct
+        fuse_file_info *ffi)
+{
+    (void) co;
+
+    char resbuf[9];
+    char *operbuf = NULL;
+    int ret = 0;
+    uint32_t flags_serialised = 0;
+    uint32_t mode_serialised = 0;
+    size_t pathlen = 0;
+
+    KFS_ENTER();
+
+    pathlen = strlen(path);
+    operbuf = KFS_MALLOC(pathlen + 8 + 6);
+    if (operbuf == NULL) {
+        KFS_RETURN(-ENOMEM);
+    }
+    flags_serialised = htonl(ffi->flags);
+    mode_serialised = htonl(mode);
+    memcpy(operbuf + 6, &flags_serialised, 4);
+    memcpy(operbuf + 10, &mode_serialised, 4);
+    memcpy(operbuf + 14, path, pathlen);
+    ret = do_operation_wrapper(KFS_OPID_CREATE, operbuf, pathlen + 8, resbuf,
+            sizeof(resbuf), NULL);
+    operbuf = KFS_FREE(operbuf);
+    if (ret == 0) {
+        KFS_ASSERT(sizeof(ffi->fh) == 8);
+        memcpy(&(ffi->fh), resbuf, 8);
+        ffi->direct_io = (resbuf[8] << 0) & 1;
+        ffi->keep_cache = (resbuf[8] << 1) & 1;
+#if FUSE_VERSION >= 29
+        ffi->nonseekable = (resbuf[8] << 2) & 1;
+#endif
+    }
+
+    KFS_RETURN(ret);
+}
+
+static int    
+tcpc_fgetattr(const kfs_context_t co, const char *fusepath, struct stat *stbuf,
+        struct fuse_file_info *ffi)
+{
+    (void) co;
+    (void) fusepath;
+
+    uint32_t intbuf[13];
+    char resbuf[sizeof(intbuf)];
+    char operbuf[8 + 6];
+    int ret = 0;
+
+    KFS_ENTER();
+
+    memcpy(operbuf + 6, &ffi->fh, 8);
+    ret = do_operation_wrapper(KFS_OPID_FGETATTR, operbuf, 8, resbuf,
+            sizeof(resbuf), NULL);
+    if (ret != 0) {
+        KFS_RETURN(ret);
+    }
+    KFS_ASSERT(sizeof(intbuf) == sizeof(resbuf));
+    memcpy(intbuf, resbuf, sizeof(intbuf));
+    stbuf = unserialise_stat(stbuf, intbuf);
+
+    KFS_RETURN(0);
+}
+
 static const struct kfs_operations handlers = {
     .getattr = tcpc_getattr,
     .readlink = tcpc_readlink,
@@ -748,7 +834,7 @@ static const struct kfs_operations handlers = {
     .read = tcpc_read,
     .write = tcpc_write,
     .statfs = nosys_statfs,
-    .flush = nosys_flush,
+    .flush = tcpc_flush,
     .release = tcpc_release,
     .fsync = nosys_fsync,
 #ifdef KFS_USE_XATTR
@@ -762,9 +848,9 @@ static const struct kfs_operations handlers = {
     .releasedir = tcpc_releasedir,
     .fsyncdir = nosys_fsyncdir,
     .access = nosys_access,
-    .create = nosys_create,
+    .create = tcpc_create,
     .ftruncate = nosys_ftruncate,
-    .fgetattr = nosys_fgetattr,
+    .fgetattr = tcpc_fgetattr,
     .lock = nosys_lock,
     .utimens = nosys_utimens,
     .bmap = nosys_bmap,
