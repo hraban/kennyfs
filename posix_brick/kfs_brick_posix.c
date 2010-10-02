@@ -462,7 +462,7 @@ posix_write(const kfs_context_t co, const char *fusepath, const char *buf,
         KFS_RETURN(-errno);
     }
 
-    KFS_RETURN(0);
+    KFS_RETURN(ret);
 }
 
 static int

@@ -673,7 +673,7 @@ handle_write(client_t c, const char *rawop, size_t opsize)
     kfs_init_context(&context);
     memset(&ffi, 0, sizeof(ffi));
     memcpy(&ffi.fh, rawop, 8);
-    writelen = opsize - 20;
+    writelen = opsize - 16;
     memcpy(&offset, rawop + 8, 8);
     offset = ntohll(offset);
     if (resultbuf == NULL) {
