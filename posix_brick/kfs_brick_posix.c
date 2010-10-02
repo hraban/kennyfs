@@ -76,6 +76,35 @@ posix_getattr(const kfs_context_t co, const char *fusepath, struct stat *stbuf)
 }
 
 static int
+posix_create(const kfs_context_t co, const char *fusepath, mode_t mode, struct
+        fuse_file_info *fi)
+{
+    const char * const mountroot = co->private_data;
+    char pathbuf[PATHBUF_SIZE];
+    char *fullpath = NULL;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    ret = 0;
+    fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
+    if (fullpath == NULL) {
+        KFS_RETURN(-errno);
+    }
+    ret = open(fullpath, fi->flags, mode);
+    if (ret == -1) {
+        ret = -errno;
+    } else {
+        fi->fh = ret;
+        ret = 0;
+    }
+    fullpath = KFS_BUFSTRFREE(fullpath, pathbuf);
+
+    KFS_RETURN(ret);
+}
+
+
+static int
 posix_ftruncate(const kfs_context_t co, const char *path, off_t off, struct
         fuse_file_info *fi)
 {
@@ -107,10 +136,10 @@ posix_fgetattr(const kfs_context_t co, const char *path, struct stat *stbuf,
 
     ret = fstat(fi->fh, stbuf);
     if (ret == -1) {
-        ret = -errno;
+        KFS_RETURN(-errno);
     }
 
-    KFS_RETURN(ret);
+    KFS_RETURN(0);
 }
 
 /**
@@ -464,13 +493,14 @@ posix_flush(const kfs_context_t co, const char *path, struct fuse_file_info *fi)
 {
     (void) co;
     (void) path;
+
     int ret = 0;
 
     KFS_ENTER();
 
     /** This is a POSIX equivalent to flushing data to a OS without closing. */
     ret = dup(fi->fh);
-    if (ret == 0) {
+    if (ret != -1) {
         ret = close(ret);
         if (ret == 0) {
             KFS_RETURN(0);
@@ -791,7 +821,7 @@ static const struct kfs_operations posix_oper = {
     .releasedir = posix_releasedir,
     .fsyncdir = nosys_fsyncdir,
     .access = nosys_access,
-    .create = nosys_create,
+    .create = posix_create,
     .ftruncate = posix_ftruncate,
     .fgetattr = posix_fgetattr,
     .lock = nosys_lock,
