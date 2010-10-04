@@ -2,6 +2,7 @@
  * Some utility functions.
  */
 
+#include <stdarg.h>
 /* For sleep(). */
 #include <unistd.h>
 
@@ -120,6 +121,48 @@ kfs_strcpy(const char *src)
     }
 
     KFS_RETURN(dest);
+}
+
+/**
+ * Like sprintf but does not require buffer: resulting message will always be in
+ * freshly allocated buffer which must eventually be freed. Unless an error
+ * occurred, in which case NULL is returned.
+ */
+char *
+kfs_sprintf(const char *fmt, ...)
+{
+    char *buf = NULL;
+    char *newbuf = NULL;
+    size_t buflen = 100; /* Guess at maximum needed buflen. */
+    int ret = 0;
+    va_list ap;
+
+    KFS_ASSERT(fmt != NULL);
+    buf = KFS_MALLOC(buflen);
+    if (buf == NULL) {
+        /* Not even 100b are available: never mind the whole thing. */
+        KFS_RETURN(NULL);
+    }
+    for (;;) {
+        va_start(ap, fmt);
+        ret = vsnprintf(buf, buflen, fmt, ap);
+        va_end(ap);
+        KFS_ASSERT(ret >= 0);
+        if (ret < buflen) {
+            KFS_RETURN(buf);
+        }
+        /* Reallocation allowed only once. */
+        KFS_ASSERT(newbuf == NULL);
+        newbuf = KFS_REALLOC(buf, buflen);
+        buflen = ret + 1;
+        if (newbuf == NULL) {
+            buf = KFS_FREE(buf);
+            KFS_RETURN(NULL);
+        }
+        buf = newbuf;
+    }
+
+    KFS_RETURN(NULL);
 }
 
 /**

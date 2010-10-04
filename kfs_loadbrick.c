@@ -23,14 +23,11 @@
 #include "kfs_memory.h"
 #include "kfs_misc.h"
 
-enum {
-    BRICK_PASS,
-    BRICK_POSIX,
-    BRICK_TCP,
-    _BRICK_NUM,
-};
-
 #define MAX_SUBVOLUMES 100U
+
+#ifndef KFS_BRICK_PATH_PREFIX
+#  define KFS_BRICK_PATH_PREFIX ""
+#endif
 
 /** Private data for resource tracking. */
 struct kfs_loadbrick_priv {
@@ -44,17 +41,7 @@ struct kfs_loadbrick_priv {
     size_t num_subvolumes;
 };
 
-const char * const BRICK_NAMES[] = {
-    [BRICK_PASS] = "pass",
-    [BRICK_POSIX] = "posix",
-    [BRICK_TCP] = "tcp",
-};
-
-const char * const BRICK_PATHS[] = {
-    [BRICK_PASS] = "pass_brick/libkfs_brick_pass.so",
-    [BRICK_POSIX] = "posix_brick/libkfs_brick_posix.so",
-    [BRICK_TCP] = "tcp_brick/libkfs_brick_tcp.so",
-};
+const char BRICK_PATH_FMT[] = KFS_BRICK_PATH_PREFIX "%s_brick/libkfs_brick_%s.so";
 
 /**
  * Allocate a new, zero'ed private brick.
@@ -73,23 +60,19 @@ new_kfs_loadbrick_priv(void)
 
 /**
  * Get the path corresponding to given brick name. On success the brickpath
- * is returned. On error NULL is returned.
+ * is returned. On error NULL is returned. The returned string is freshly
+ * allocated and must eventually be free'd.
  */
-static const char *
+static char *
 get_brick_path(const char brickname[])
 {
-    uint_t i = 0;
+    char *path = NULL;
 
     KFS_ENTER();
 
-    KFS_ASSERT(brickname != NULL && brickname[0] != '\0');
-    for (i = 0; i < _BRICK_NUM; i++) {
-        if (strcmp(brickname, BRICK_NAMES[i]) == 0) {
-            KFS_RETURN(BRICK_PATHS[i]);
-        }
-    }
+    path = kfs_sprintf(BRICK_PATH_FMT, brickname, brickname);
 
-    KFS_RETURN(NULL);
+    KFS_RETURN(path);
 }
 
 /**
@@ -122,7 +105,7 @@ get_any_brick(const char *conffile, const char *section)
 {
     kfs_brick_getapi_f brick_getapi_f = NULL;
     const struct kfs_brick_api *brick_api = NULL;
-    const char *brickpath = NULL;
+    char *brickpath = NULL;
     struct kfs_loadbrick_priv *priv = NULL;
     struct kfs_subvolume *subvolume = NULL;
     char *subvolume_name = NULL;
@@ -141,13 +124,14 @@ get_any_brick(const char *conffile, const char *section)
     }
     brickpath = get_brick_path(buf);
     if (brickpath == NULL) {
-        KFS_ERROR("Root brick type not recognized: '%s'.", buf);
+        KFS_ERROR("Failed to load brick of type: '%s'.", buf);
         buf = KFS_FREE(buf);
         KFS_RETURN(NULL);
     }
     buf = KFS_FREE(buf);
     /* Dynamically load the brick. */
     dynhandle = dlopen(brickpath, RTLD_NOW | RTLD_LOCAL);
+    brickpath = KFS_FREE(brickpath);
     if (dynhandle == NULL) {
         KFS_ERROR("Loading brick failed: %s", dlerror());
         KFS_RETURN(NULL);
