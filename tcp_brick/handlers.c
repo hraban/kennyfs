@@ -132,6 +132,32 @@ unserialise_stat(struct stat *stbuf, const uint32_t *intbuf)
     KFS_RETURN(stbuf);
 }
 
+/**
+ * Counterpart to tcp_server/handlers.c's unserialise_timespec().
+ */
+static uint64_t *
+serialise_timespec(uint64_t buf[4], const struct timespec tvnano[2])
+{
+    /* Some extra type safety (work around compiler warnings without cast). */
+    uint64_t tmp = 0;
+
+    KFS_ENTER();
+
+    KFS_ASSERT(sizeof(uint64_t) == 8);
+    KFS_ASSERT(sizeof(tvnano[0].tv_sec) <= 8);
+    KFS_ASSERT(sizeof(tvnano[0].tv_nsec) <= 8);
+    tmp = tvnano[0].tv_sec;
+    buf[0] = htonll(tmp);
+    tmp = tvnano[0].tv_nsec;
+    buf[1] = htonll(tmp);
+    tmp = tvnano[1].tv_sec;
+    buf[2] = htonll(tmp);
+    tmp = tvnano[1].tv_nsec;
+    buf[3] = htonll(tmp);
+
+    KFS_RETURN(buf);
+}
+
 /*
  * KennyFS operation handlers.
  */
@@ -817,6 +843,37 @@ tcpc_fgetattr(const kfs_context_t co, const char *fusepath, struct stat *stbuf,
     KFS_RETURN(0);
 }
 
+static int
+tcpc_utimens(const kfs_context_t co, const char *path, const struct timespec
+        tvnano[2])
+{
+    (void) co;
+
+    uint64_t intbuf[4];
+    char *operbuf = NULL;
+    int ret = 0;
+    size_t operbuflen = 0;
+    size_t pathlen = 0;
+
+    KFS_ENTER();
+
+    KFS_ASSERT(sizeof(intbuf) == 32);
+    pathlen = strlen(path);
+    operbuflen = 6 + sizeof(intbuf) + pathlen;
+    operbuf = KFS_MALLOC(operbuflen);
+    if (operbuf == NULL) {
+        KFS_RETURN(-ENOMEM);
+    }
+    serialise_timespec(intbuf, tvnano);
+    memcpy(operbuf + 6, intbuf, sizeof(intbuf));
+    memcpy(operbuf + 6 + sizeof(intbuf), path, pathlen);
+    ret = do_operation_wrapper(KFS_OPID_UTIMENS, operbuf, operbuflen - 6, NULL,
+            0, NULL);
+    operbuf = KFS_FREE(operbuf);
+
+    KFS_RETURN(ret);
+}
+
 static const struct kfs_operations handlers = {
     .getattr = tcpc_getattr,
     .readlink = tcpc_readlink,
@@ -852,7 +909,7 @@ static const struct kfs_operations handlers = {
     .ftruncate = nosys_ftruncate,
     .fgetattr = tcpc_fgetattr,
     .lock = nosys_lock,
-    .utimens = nosys_utimens,
+    .utimens = tcpc_utimens,
     .bmap = nosys_bmap,
 #if FUSE_VERSION >= 28
     .ioctl = nosys_ioctl,

@@ -41,11 +41,17 @@ def scan(f, debuglevel=0):
             line = line[18:]
         if use_trace and line.startswith('[kfs_trace]'):
             stripped = line[len('[kfs_trace] '):]
-            if stripped.endswith('enter'):
+            if stripped.endswith(': enter'):
                 stack.append(stripped[:-len(': enter')])
             else:
-                assert(stripped.endswith('return'))
+                assert(stripped.endswith(': return'))
                 exitf = stack.pop()
+# Threading causes asynchronous control flow, this test breaks.
+#                nowexiting = stripped[:-len(': return')].split()[-1]
+#                exitf = exitf.split()[-1]
+#                if nowexiting != exitf:
+#                    sys.exit('Function enter/return mismatch: %s -> %s' %
+#                            (exitf, nowexiting))
         elif line.startswith('[kfs_debug] kfs_memory.c:'):
             m = RE_MALLOC.search(line)
             if m is not None:
@@ -74,7 +80,8 @@ def scan(f, debuglevel=0):
                 continue
             m = RE_REALLOC.search(line)
             if m is not None:
-                old, new, nbytes = map(lambda x: int(*x), zip(m.groups(), (16, 16, 10)))
+                old, new, nbytes = map(lambda x: int(*x),
+                                            zip(m.groups(), (16, 16, 10)))
                 malloc = mallocs.pop(old)
                 concurrentbytes = concurrentbytes - malloc[2] + nbytes
                 totalbytes += max(0, nbytes - malloc[2])

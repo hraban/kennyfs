@@ -93,6 +93,9 @@ send_reply(client_t c, int returnvalue, char *buf, size_t bodysize)
 
 /**
  * Indicates to the client that the operation it sent was invalid / corrupt.
+ * TODO: This could just as well be used to send back any return value,
+ * including 0 (so that the caller does not need to pass some place-holder
+ * buffer).
  */
 static int
 report_error(client_t c, int error)
@@ -155,6 +158,30 @@ serialise_stat(uint32_t *intbuf, const struct stat *stbuf)
     intbuf[12] = htonl(stbuf->st_ctime);
 
     KFS_RETURN(intbuf);
+}
+
+/**
+ * Unserialise an array of 2 struct timespec elements from an array of 4
+ * uint64_t elements. Returns a pointer to the array. Total size in bytes: 32.
+ *
+ * The elements were ordered as follows:
+ *
+ * [0].tv_sec
+ * [0].tv_nsec
+ * [1].tv_sec
+ * [1].tv_nsec
+ */
+static struct timespec *
+unserialise_timespec(struct timespec tvnano[2], const uint64_t intbuf[4])
+{
+    KFS_ENTER();
+
+    tvnano[0].tv_sec = ntohll(intbuf[0]);
+    tvnano[0].tv_nsec = ntohll(intbuf[1]);
+    tvnano[1].tv_sec = ntohll(intbuf[2]);
+    tvnano[1].tv_nsec = ntohll(intbuf[3]);
+
+    KFS_RETURN(tvnano);
 }
 
 /**
@@ -1049,6 +1076,35 @@ handle_fgetattr(client_t c, const char *rawop, size_t opsize)
 }
 
 /**
+ * Handle a utimens operation. The argument is the serialised new file
+ * modification and access times (see unserialise_timespec) followed by the
+ * pathname. The return message is empty (just the error code).
+ */
+static int
+handle_utimens(client_t c, const char *rawop, size_t opsize)
+{
+    uint64_t intbuf[4];
+    char resbuf[8];
+    struct timespec tvnano[2];
+    int ret = 0;
+    kfs_context_t_ context;
+
+    KFS_ENTER();
+
+    kfs_init_context(&context);
+    if (opsize < sizeof(intbuf)) {
+        report_error(c, EINVAL);
+        KFS_RETURN(-1);
+    }
+    memcpy(intbuf, rawop, sizeof(intbuf));
+    unserialise_timespec(tvnano, intbuf);
+    ret = oper->utimens(&context, rawop + sizeof(intbuf), tvnano);
+    ret = send_reply(c, ret, resbuf, 0);
+
+    KFS_RETURN(ret);
+}
+
+/**
  * Handles a QUIT message.
  */
 static int
@@ -1086,7 +1142,6 @@ static const handler_t handlers[KFS_OPID_MAX_] = {
     [KFS_OPID_CHMOD] = handle_chmod,
     [KFS_OPID_CHOWN] = handle_chown,
     [KFS_OPID_TRUNCATE] = handle_truncate,
-    [KFS_OPID_UTIME] = NULL,
     [KFS_OPID_OPEN] = handle_open,
     [KFS_OPID_READ] = handle_read,
     [KFS_OPID_WRITE] = handle_write,
@@ -1109,7 +1164,7 @@ static const handler_t handlers[KFS_OPID_MAX_] = {
     [KFS_OPID_FTRUNCATE] = NULL,
     [KFS_OPID_FGETATTR] = handle_fgetattr,
     [KFS_OPID_LOCK] = NULL,
-    [KFS_OPID_UTIMENS] = NULL,
+    [KFS_OPID_UTIMENS] = handle_utimens,
     [KFS_OPID_BMAP] = NULL,
 #if FUSE_VERSION >= 28
     [KFS_OPID_IOCTL] = NULL,

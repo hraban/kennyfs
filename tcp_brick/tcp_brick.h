@@ -65,7 +65,6 @@ enum fuse_op_id {
     KFS_OPID_CHMOD,
     KFS_OPID_CHOWN,
     KFS_OPID_TRUNCATE,
-    KFS_OPID_UTIME,
     KFS_OPID_OPEN,
     KFS_OPID_READ,
     KFS_OPID_WRITE,
