@@ -137,6 +137,8 @@ kfs_sprintf(const char *fmt, ...)
     int ret = 0;
     va_list ap;
 
+    KFS_ENTER();
+
     KFS_ASSERT(fmt != NULL);
     buf = KFS_MALLOC(buflen);
     if (buf == NULL) {
