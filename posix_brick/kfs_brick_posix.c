@@ -38,6 +38,10 @@
 #include "kfs_api.h"
 #include "kfs_misc.h"
 
+#if _POSIX_C_SOURCE >= 199309L || _XOPEN_SOURCE >= 500
+#  define KFS_USE_FDATASYNC
+#endif
+
 /**
  * Free given string buffer if it does not equal given static buffer. Useful for
  * cleaning up potential allocations by kfs_bufstrcat(). Returns the strbuf,
@@ -67,6 +71,29 @@ posix_getattr(const kfs_context_t co, const char *fusepath, struct stat *stbuf)
         KFS_RETURN(-errno);
     }
     ret = lstat(fullpath, stbuf);
+    if (ret == -1) {
+        ret = -errno;
+    }
+    fullpath = KFS_BUFSTRFREE(fullpath, pathbuf);
+
+    KFS_RETURN(ret);
+}
+
+static int
+posix_access(const kfs_context_t co, const char *fusepath, int mask)
+{
+    const char * const mountroot = co->private_data;
+    char pathbuf[PATHBUF_SIZE];
+    char *fullpath = NULL;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
+    if (fullpath == NULL) {
+        KFS_RETURN(-errno);
+    }
+    ret = access(fullpath, mask);
     if (ret == -1) {
         ret = -errno;
     }
@@ -529,6 +556,35 @@ posix_release(const kfs_context_t co, const char *path, struct fuse_file_info
     KFS_RETURN(0);
 }
 
+static int
+posix_fsync(const kfs_context_t co, const char *fusepath, int datasync, struct
+        fuse_file_info *fi)
+{
+    (void) co;
+    (void) fusepath;
+#ifndef KFS_USE_FDATASYNC
+    (void) datasync;
+#endif
+
+    int ret = 0;
+
+    KFS_ENTER();
+
+#ifdef KFS_USE_FDATASYNC
+    if (datasync) {
+        ret = fdatasync(fi->fh);
+    } else
+#else
+    {
+        ret = fsync(fi->fh);
+    }
+#endif
+    if (ret == -1) {
+        KFS_RETURN(-errno);
+    }
+
+    KFS_RETURN(0);
+}
 
 
 #ifdef KFS_USE_XATTR
@@ -785,6 +841,7 @@ posix_utimens(const kfs_context_t co, const char *fusepath, const struct
     if (ret == -1) {
         ret = -errno;
     }
+    KFS_DEBUG("utimens(\"%s\", ...) -> %d", fullpath, ret);
     fullpath = KFS_BUFSTRFREE(fullpath, pathbuf);
 
     KFS_RETURN(ret);
@@ -809,7 +866,7 @@ static const struct kfs_operations posix_oper = {
     .statfs = posix_statfs,
     .flush = posix_flush,
     .release = posix_release,
-    .fsync = nosys_fsync,
+    .fsync = posix_fsync,
 #if KFS_USE_XATTR
     .setxattr = posix_setxattr,
     .getxattr = posix_getxattr,
@@ -820,7 +877,7 @@ static const struct kfs_operations posix_oper = {
     .readdir = posix_readdir,
     .releasedir = posix_releasedir,
     .fsyncdir = nosys_fsyncdir,
-    .access = nosys_access,
+    .access = posix_access,
     .create = posix_create,
     .ftruncate = posix_ftruncate,
     .fgetattr = posix_fgetattr,
