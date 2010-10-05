@@ -46,9 +46,8 @@ kenny_init(const char *conffile, const char *section, size_t num_subvolumes,
         KFS_ERROR("Brick %s (TCP) takes no subvolumes.", section);
         KFS_RETURN(NULL);
     }
-    ret1 = ini_gets("brick_root", "hostname", "", hostname, hostname_size,
-            conffile);
-    ret2 = ini_gets("brick_root", "port", "", port, port_size, conffile);
+    ret1 = ini_gets(section, "hostname", "", hostname, hostname_size, conffile);
+    ret2 = ini_gets(section, "port", "", port, port_size, conffile);
     if (ret1 == 0 || ret2 == 0) {
         KFS_ERROR("Did not find hostname and port for TCP brick in section `%s'"
                   " of configuration file %s.", section, conffile);
