@@ -16,8 +16,9 @@ Example:
     ...
 
 ''' % dict(name=sys.argv[0])
-RE_MALLOC = re.compile(r'kfs_[cm]alloc.*\b(\d+)\b.*0x(\w+)')
-RE_FREE = re.compile(r'kfs_free.*0x(\w+)')
+RE_MALLOC = re.compile(r'''[^"']*kfs_[cm]alloc:.*\b(\d+)\b.*0x(\w+)''')
+RE_FREE = re.compile(r'''[^"']*kfs_free:.*0x(\w+)''')
+RE_REALLOC = re.compile(r'''[^"']*kfs_realloc.*0x(\w+).*0x(\w+).*\b(\d+)\b''')
 RE_TIMESTAMP = re.compile(r'\d{10}\.\d{6} ')
 
 def scan(f, debuglevel=0):
@@ -70,6 +71,15 @@ def scan(f, debuglevel=0):
                 memaddr = int(m.group(1), 16)
                 malloc = mallocs.pop(memaddr)
                 concurrentbytes -= malloc[2]
+                continue
+            m = RE_REALLOC.search(line)
+            if m is not None:
+                old, new, nbytes = map(lambda x: int(*x), zip(m.groups(), (16, 16, 10)))
+                malloc = mallocs.pop(old)
+                concurrentbytes = concurrentbytes - malloc[2] + nbytes
+                totalbytes += max(0, nbytes - malloc[2])
+                totalmallocs += 1
+                mallocs[new] = (linenum, func, nbytes)
                 continue
     if debuglevel > 0:
         print >> sys.stderr, (

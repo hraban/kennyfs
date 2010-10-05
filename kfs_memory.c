@@ -69,7 +69,16 @@ kfs_free(void *p)
 inline void *
 kfs_realloc(void *p, size_t size)
 {
-    KFS_ASSERT(p != NULL);
+    void *newp = NULL;
 
-    return realloc(p, size);
+    KFS_ASSERT(p != NULL);
+    newp = realloc(p, size);
+    if (newp == NULL) {
+        KFS_ERROR("realloc: %s", strerror(errno));
+    } else {
+        KFS_DEBUG("Reallocated %p to %p, now %lu bytes.", p, newp, (unsigned
+                    long) size);
+    }
+
+    return newp;
 }
