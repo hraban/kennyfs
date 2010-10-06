@@ -299,7 +299,6 @@ pass_fsync(const kfs_context_t co, const char *path, int isdatasync, struct
 }
 
 
-#ifdef KFS_USE_XATTR
 /*
  * Extended attributes.
  */
@@ -366,7 +365,6 @@ pass_removexattr(const kfs_context_t co, const char *path, const char *name)
 
     KFS_RETURN(ret);
 }
-#endif
 
 /*
  * Directories.
@@ -620,12 +618,10 @@ static const struct kfs_operations handlers = {
     .flush = pass_flush,
     .release = pass_release,
     .fsync = pass_fsync,
-#if KFS_USE_XATTR
     .setxattr = pass_setxattr,
     .getxattr = pass_getxattr,
     .listxattr = pass_listxattr,
     .removexattr = pass_removexattr,
-#endif
     .opendir = pass_opendir,
     .readdir = pass_readdir,
     .releasedir = pass_releasedir,

@@ -894,12 +894,10 @@ static const struct kfs_operations handlers = {
     .flush = tcpc_flush,
     .release = tcpc_release,
     .fsync = nosys_fsync,
-#ifdef KFS_USE_XATTR
     .setxattr = nosys_setxattr,
     .getxattr = nosys_getxattr,
     .listxattr = nosys_listxattr,
     .removexattr = nosys_removexattr,
-#endif
     .opendir = tcpc_opendir,
     .readdir = tcpc_readdir,
     .releasedir = tcpc_releasedir,

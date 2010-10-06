@@ -1149,12 +1149,10 @@ static const handler_t handlers[KFS_OPID_MAX_] = {
     [KFS_OPID_FLUSH] = handle_flush,
     [KFS_OPID_RELEASE] = handle_release,
     [KFS_OPID_FSYNC] = handle_fsync,
-#ifdef KFS_USE_XATTR
     [KFS_OPID_SETXATTR] = NULL,
     [KFS_OPID_GETXATTR] = NULL,
     [KFS_OPID_LISTXATTR] = NULL,
     [KFS_OPID_REMOVEXATTR] = NULL,
-#endif
     [KFS_OPID_OPENDIR] = handle_opendir,
     [KFS_OPID_READDIR] = handle_readdir,
     [KFS_OPID_RELEASEDIR] = handle_releasedir,

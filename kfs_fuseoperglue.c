@@ -78,7 +78,6 @@ static int root_release(const char *p, struct fuse_file_info *f)
 static int root_fsync(const char *p, int i, struct fuse_file_info *f)
 { int r; KFS_ENTER(); r = oper->fsync(kfs_get_context(), p, i, f);
     KFS_RETURN(r); }
-#if KFS_USE_XATTR
 static int root_setxattr(const char *p, const char *k, const char *v, size_t s,
         int i)
 { int r; KFS_ENTER(); r = oper->setxattr(kfs_get_context(), p, k, v, s, i);
@@ -92,7 +91,6 @@ static int root_listxattr(const char *p, char *b, size_t s)
 static int root_removexattr(const char *p, const char *k)
 { int r; KFS_ENTER(); r = oper->removexattr(kfs_get_context(), p, k);
     KFS_RETURN(r); }
-#endif
 static int root_opendir(const char *p, struct fuse_file_info *f)
 { int r; KFS_ENTER(); r = oper->opendir(kfs_get_context(), p, f); KFS_RETURN(r);
 }
@@ -176,12 +174,10 @@ static const struct fuse_operations fuse_oper = {
     .flush = root_flush,
     .release = root_release,
     .fsync = root_fsync,
-#if KFS_USE_XATTR
     .setxattr = root_setxattr,
     .getxattr = root_getxattr,
     .listxattr = root_listxattr,
     .removexattr = root_removexattr,
-#endif
     .opendir = root_opendir,
     .readdir = root_readdir,
     .releasedir = root_releasedir,

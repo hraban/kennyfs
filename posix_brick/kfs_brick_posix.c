@@ -13,12 +13,10 @@
 
 #include "posix_brick/kfs_brick_posix.h"
 
-/* <attr/xattr.h> needs this header. */
+/* <attr/xattr.h> needs this header. silly xattr.h. */
 #include <sys/types.h>
 
-#ifdef KFS_USE_XATTR
-#  include <attr/xattr.h>
-#endif
+#include <attr/xattr.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -587,7 +585,6 @@ posix_fsync(const kfs_context_t co, const char *fusepath, int datasync, struct
 }
 
 
-#ifdef KFS_USE_XATTR
 /*
  * Extended attributes.
  */
@@ -688,7 +685,6 @@ posix_removexattr(const kfs_context_t co, const char *fusepath, const char
 
     KFS_RETURN(ret);
 }
-#endif
 
 /*
  * Directories.
@@ -867,12 +863,10 @@ static const struct kfs_operations posix_oper = {
     .flush = posix_flush,
     .release = posix_release,
     .fsync = posix_fsync,
-#if KFS_USE_XATTR
     .setxattr = posix_setxattr,
     .getxattr = posix_getxattr,
     .listxattr = posix_listxattr,
     .removexattr = posix_removexattr,
-#endif
     .opendir = posix_opendir,
     .readdir = posix_readdir,
     .releasedir = posix_releasedir,
