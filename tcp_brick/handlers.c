@@ -106,33 +106,6 @@ do_operation_wrapper(enum fuse_op_id id, char *operbuf, size_t operbufsize,
 }
 
 /**
- * Counterpart to tcp_server/handlers.c's serialise_stat().
- */
-static struct stat *
-unserialise_stat(struct stat *stbuf, const uint32_t *intbuf)
-{
-    KFS_ENTER();
-
-    KFS_ASSERT(stbuf != NULL && intbuf != NULL);
-    KFS_ASSERT(sizeof(uint32_t) == 4);
-    stbuf->st_dev = ntohl(intbuf[0]);
-    stbuf->st_ino = ntohl(intbuf[1]);
-    stbuf->st_mode = ntohl(intbuf[2]);
-    stbuf->st_nlink = ntohl(intbuf[3]);
-    stbuf->st_uid = ntohl(intbuf[4]);
-    stbuf->st_gid = ntohl(intbuf[5]);
-    stbuf->st_rdev = ntohl(intbuf[6]);
-    stbuf->st_size = ntohl(intbuf[7]);
-    stbuf->st_blksize = ntohl(intbuf[8]);
-    stbuf->st_blocks = ntohl(intbuf[9]);
-    stbuf->st_atime = ntohl(intbuf[10]);
-    stbuf->st_mtime = ntohl(intbuf[11]);
-    stbuf->st_ctime = ntohl(intbuf[12]);
-
-    KFS_RETURN(stbuf);
-}
-
-/**
  * Counterpart to tcp_server/handlers.c's unserialise_timespec().
  */
 static uint64_t *

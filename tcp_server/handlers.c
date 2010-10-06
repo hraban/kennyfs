@@ -114,53 +114,6 @@ report_error(client_t c, int error)
 }
 
 /**
- * Serialise a struct stat to an array of 13 uint32_t elements. Returns a
- * pointer to the array. Total size in bytes: 52.
- *
- * The elements are ordered as follows:
- *
- * - st_dev
- * - st_ino
- * - st_mode
- * - st_nlink
- * - st_uid
- * - st_gid
- * - st_rdev
- * - st_size
- * - st_blksize
- * - st_blocks
- * - st_atime
- * - st_mtime
- * - st_ctime
- *
- * This assumes that all those values are of a type that entirely fits in a
- * uint32_t. TODO: Check if that is always the case.
- */
-static uint32_t *
-serialise_stat(uint32_t *intbuf, const struct stat *stbuf)
-{
-    KFS_ENTER();
-
-    KFS_ASSERT(intbuf != NULL && stbuf != NULL);
-    KFS_ASSERT(sizeof(uint32_t) == 4);
-    intbuf[0] = htonl(stbuf->st_dev);
-    intbuf[1] = htonl(stbuf->st_ino);
-    intbuf[2] = htonl(stbuf->st_mode);
-    intbuf[3] = htonl(stbuf->st_nlink);
-    intbuf[4] = htonl(stbuf->st_uid);
-    intbuf[5] = htonl(stbuf->st_gid);
-    intbuf[6] = htonl(stbuf->st_rdev);
-    intbuf[7] = htonl(stbuf->st_size);
-    intbuf[8] = htonl(stbuf->st_blksize);
-    intbuf[9] = htonl(stbuf->st_blocks);
-    intbuf[10] = htonl(stbuf->st_atime);
-    intbuf[11] = htonl(stbuf->st_mtime);
-    intbuf[12] = htonl(stbuf->st_ctime);
-
-    KFS_RETURN(intbuf);
-}
-
-/**
  * Unserialise an array of 2 struct timespec elements from an array of 4
  * uint64_t elements. Returns a pointer to the array. Total size in bytes: 32.
  *

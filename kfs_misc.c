@@ -2,7 +2,10 @@
  * Some utility functions.
  */
 
+#include <arpa/inet.h>
 #include <stdarg.h>
+#include <stdint.h>
+#include <sys/stat.h>
 /* For sleep(). */
 #include <unistd.h>
 
@@ -207,4 +210,78 @@ kfs_ini_gets(const char *conffile, const char *section, const char *key)
     }
 
     KFS_RETURN(NULL);
+}
+
+/**
+ * Serialise a struct stat to an array of 13 uint32_t elements. Returns a
+ * pointer to the array. Total size in bytes: 52.
+ *
+ * The elements are ordered as follows:
+ *
+ * - st_dev
+ * - st_ino
+ * - st_mode
+ * - st_nlink
+ * - st_uid
+ * - st_gid
+ * - st_rdev
+ * - st_size
+ * - st_blksize
+ * - st_blocks
+ * - st_atime
+ * - st_mtime
+ * - st_ctime
+ *
+ * This assumes that all those values are of a type that entirely fits in a
+ * uint32_t. TODO: Check if that is always the case.
+ */
+uint32_t *
+serialise_stat(uint32_t intbuf[13], const struct stat * const stbuf)
+{
+    KFS_ENTER();
+
+    KFS_ASSERT(intbuf != NULL && stbuf != NULL);
+    KFS_ASSERT(sizeof(uint32_t) == 4);
+    intbuf[0] = htonl(stbuf->st_dev);
+    intbuf[1] = htonl(stbuf->st_ino);
+    intbuf[2] = htonl(stbuf->st_mode);
+    intbuf[3] = htonl(stbuf->st_nlink);
+    intbuf[4] = htonl(stbuf->st_uid);
+    intbuf[5] = htonl(stbuf->st_gid);
+    intbuf[6] = htonl(stbuf->st_rdev);
+    intbuf[7] = htonl(stbuf->st_size);
+    intbuf[8] = htonl(stbuf->st_blksize);
+    intbuf[9] = htonl(stbuf->st_blocks);
+    intbuf[10] = htonl(stbuf->st_atime);
+    intbuf[11] = htonl(stbuf->st_mtime);
+    intbuf[12] = htonl(stbuf->st_ctime);
+
+    KFS_RETURN(intbuf);
+}
+
+/**
+ * Counterpart to serialise_stat().
+ */
+struct stat *
+unserialise_stat(struct stat * const stbuf, const uint32_t intbuf[13])
+{
+    KFS_ENTER();
+
+    KFS_ASSERT(stbuf != NULL && intbuf != NULL);
+    KFS_ASSERT(sizeof(uint32_t) == 4);
+    stbuf->st_dev = ntohl(intbuf[0]);
+    stbuf->st_ino = ntohl(intbuf[1]);
+    stbuf->st_mode = ntohl(intbuf[2]);
+    stbuf->st_nlink = ntohl(intbuf[3]);
+    stbuf->st_uid = ntohl(intbuf[4]);
+    stbuf->st_gid = ntohl(intbuf[5]);
+    stbuf->st_rdev = ntohl(intbuf[6]);
+    stbuf->st_size = ntohl(intbuf[7]);
+    stbuf->st_blksize = ntohl(intbuf[8]);
+    stbuf->st_blocks = ntohl(intbuf[9]);
+    stbuf->st_atime = ntohl(intbuf[10]);
+    stbuf->st_mtime = ntohl(intbuf[11]);
+    stbuf->st_ctime = ntohl(intbuf[12]);
+
+    KFS_RETURN(stbuf);
 }
