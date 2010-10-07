@@ -26,78 +26,10 @@
 
 #define KFS_XNAME(suffix) (LOCAL_XATTR_NS "." suffix)
 
-/**
- * Caches the result in extended attributes of the cache copy.
- *
- * This is to prevent opening the can of worms that is manual setattr() on files
- * on different filesystems, if that is even possible at all.
- *
- * As per the POSIX spec (TODO: is that really in the spec? I got it from man
- * 3posix stat) (at least) the following members are cached:
- *
- * - st_mode
- * - st_ino
- * - st_dev
- * - st_uid
- * - st_gid
- * - st_atime
- * - st_ctime
- * - st_mtime
- * - st_nlink
+/*
+ * Declared (defined) above getattr() because it is used there (and I try to
+ * avoid unnecessary declarations).
  */
-static int
-cache_getattr(const kfs_context_t co, const char *path, struct stat *stbuf)
-{
-    uint32_t intbuf[13];
-    const size_t buflen = sizeof(intbuf);
-    char charbuf[buflen];
-    struct kfs_subvolume * const subv = co->priv;
-    struct kfs_subvolume * const cache = subv + 1;
-    int ret = 0;
-
-    KFS_ENTER();
-
-    /* Check if data is already cached. */
-    KFS_DO_OPER(ret = , cache, getxattr, co, path, KFS_XNAME("stat"), charbuf,
-            buflen);
-    if (ret == buflen) {
-        /* Success: the file metadata is cached. */
-        memcpy(intbuf, charbuf, buflen);
-        stbuf = unserialise_stat(stbuf, intbuf);
-        KFS_RETURN(0);
-    }
-    /* There is no cached data of expected size. */
-    KFS_DO_OPER(ret = , subv, getattr, co, path, stbuf);
-    if (ret != 0) {
-        KFS_RETURN(ret);
-    }
-    /* But the file exists! Cache the metadata. */
-    serialise_stat(intbuf, stbuf);
-    memcpy(charbuf, intbuf, buflen);
-    KFS_DO_OPER(ret = , cache, setxattr, co, path, KFS_XNAME("stat"), charbuf,
-            buflen, 0);
-    switch (ret) {
-    case 0:
-        break;
-    case -ENOTSUP:
-        /* TODO: Disable all xattr operations from now on. */
-        KFS_INFO("Caching enabled but extended attributes not supported.");
-        break;
-    case -ENOENT:
-        /* The file does not exist. Create it and wait for next getattr call. */
-        KFS_DO_OPER(ret = , cache, mknod, co, path, S_IRUSR | S_IWUSR, 0);
-        if (ret == 0) {
-            break;
-        }
-    default:
-        KFS_INFO("Error while caching metadata: %s.", strerror(-ret));
-        break;
-    }
-
-    /* Ignore return value of cache. */
-    KFS_RETURN(0);
-}
-
 static int
 cache_readlink(const kfs_context_t co, const char *path, char *buf, size_t
         size)
@@ -137,6 +69,93 @@ cache_readlink(const kfs_context_t co, const char *path, char *buf, size_t
     }
 
     /* Ignore the return value of the cache. */
+    KFS_RETURN(0);
+}
+
+/**
+ * Caches the result in extended attributes of the cache copy.
+ *
+ * This is to prevent opening the can of worms that is manual setattr() on files
+ * on different filesystems, if that is even possible at all.
+ *
+ * As per the POSIX spec (TODO: is that really in the spec? I got it from man
+ * 3posix stat) (at least) the following members are cached:
+ *
+ * - st_mode
+ * - st_ino
+ * - st_dev
+ * - st_uid
+ * - st_gid
+ * - st_atime
+ * - st_ctime
+ * - st_mtime
+ * - st_nlink
+ */
+static int
+cache_getattr(const kfs_context_t co, const char *path, struct stat *stbuf)
+{
+    uint32_t intbuf[13];
+    char charbuf[MAX(PATHBUF_SIZE, sizeof(intbuf))];
+    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_subvolume * const cache = subv + 1;
+    const char *debug_info = NULL;
+    int ret = 0;
+    mode_t mode = 0;
+
+    KFS_ENTER();
+
+    KFS_ASSERT(sizeof(charbuf) >= sizeof(intbuf));
+    /* Check if data is already cached. */
+    KFS_DO_OPER(ret = , cache, getxattr, co, path, KFS_XNAME("stat"), charbuf,
+            sizeof(intbuf));
+    if (ret == sizeof(intbuf)) {
+        /* Success: the file metadata is cached. */
+        memcpy(intbuf, charbuf, sizeof(intbuf));
+        stbuf = unserialise_stat(stbuf, intbuf);
+        KFS_RETURN(0);
+    }
+    /* There is no cached data of expected size. */
+    KFS_DO_OPER(ret = , subv, getattr, co, path, stbuf);
+    if (ret != 0) {
+        KFS_RETURN(ret);
+    }
+    /* But the file exists! Cache the metadata. */
+    serialise_stat(intbuf, stbuf);
+    memcpy(charbuf, intbuf, sizeof(intbuf));
+    KFS_DO_OPER(ret = , cache, setxattr, co, path, KFS_XNAME("stat"), charbuf,
+            sizeof(intbuf), 0);
+    debug_info = "";
+    switch (ret) {
+    case 0:
+        break;
+    case -ENOTSUP:
+        /* TODO: Disable all xattr operations from now on? */
+        KFS_INFO("Caching enabled but extended attributes not supported.");
+        break;
+    case -ENOENT:
+        /* The file does not exist. Create it and wait for next getattr call. */
+        mode = (stbuf->st_mode & S_IFMT) | S_IRWXU;
+        if (S_ISDIR(mode)) {
+            debug_info = " of directory";
+            KFS_DO_OPER(ret = , cache, mkdir, co, path, mode);
+        } else if (S_ISLNK(mode)) {
+            /* cache_readlink will cache the symlink. */
+            debug_info = " of symlink";
+            co->priv = subv;
+            cache_readlink(co, path, charbuf, sizeof(charbuf));
+        } else {
+            KFS_DO_OPER(ret = , cache, mknod, co, path, mode, 0);
+        }
+        if (ret == 0) {
+            break;
+        }
+    default:
+        KFS_INFO("Error while caching metadata%s: %s.", debug_info,
+                strerror(-ret));
+        break;
+    }
+
+    /* Ignore return value of cache. */
     KFS_RETURN(0);
 }
 
@@ -623,13 +642,22 @@ cache_create(const kfs_context_t co, const char *path, mode_t mode, struct
         fuse_file_info *fi)
 {
     struct kfs_subvolume * const subv = co->priv;
+    struct kfs_subvolume * const cache = subv + 1;
     int ret = 0;
 
     KFS_ENTER();
 
     KFS_DO_OPER(ret = , subv, create, co, path, mode, fi);
+    if (ret != 0) {
+        KFS_RETURN(ret);
+    }
+    /* create = (mknod, open), but open is not used on cache (yet). */
+    KFS_DO_OPER(ret = , cache, mknod, co, path, mode, 0);
+    if (ret != 0) {
+        KFS_INFO("Error while caching new file: %s.", strerror(-ret));
+    }
 
-    KFS_RETURN(ret);
+    KFS_RETURN(0);
 }
 
 static int
@@ -679,13 +707,39 @@ cache_utimens(const kfs_context_t co, const char *path, const struct timespec
         tvnano[2])
 {
     struct kfs_subvolume * const subv = co->priv;
+    struct kfs_subvolume * const cache = subv + 1;
+    uint32_t intbuf[13];
+    const size_t buflen = sizeof(intbuf);
+    char charbuf[buflen];
+    struct stat _stbuf;
+    struct stat * const stbuf = &_stbuf;
     int ret = 0;
 
     KFS_ENTER();
 
     KFS_DO_OPER(ret = , subv, utimens, co, path, tvnano);
+    if (ret != 0) {
+        KFS_RETURN(ret);
+    }
+    /* Get the attributes of this file (reuse this module's getattr()). */
+    co->priv = subv;
+    ret = cache_getattr(co, path, stbuf);
+    if (ret != 0) {
+        /* If getattr() fails this can not be cached (but utimens succeeded). */
+        KFS_RETURN(0);
+    }
+    /* Update those attributes. */
+    stbuf->st_atime = tvnano[0].tv_sec;
+    stbuf->st_mtime = tvnano[1].tv_sec;
+    serialise_stat(intbuf, stbuf);
+    memcpy(charbuf, intbuf, buflen);
+    KFS_DO_OPER(ret = , cache, setxattr, co, path, KFS_XNAME("stat"), charbuf,
+            buflen, 0);
+    if (ret != 0) {
+        KFS_INFO("Error while caching metadata: %s.", strerror(-ret));
+    }
 
-    KFS_RETURN(ret);
+    KFS_RETURN(0);
 }
 
 static int

@@ -72,6 +72,8 @@
         (co)->priv = (brick)->private_data; \
         ret (brick)->oper->op(co, ## __VA_ARGS__); \
     } while (0)
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
 
 #define KFS_ASSERT assert
 /* KFS_NASSERT is executed verbatim in NON-debugging mode. */
