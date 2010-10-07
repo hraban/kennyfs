@@ -73,7 +73,7 @@ cache_getattr(const kfs_context_t co, const char *path, struct stat *stbuf)
     }
     /* But the file exists! Cache the metadata. */
     serialise_stat(intbuf, stbuf);
-    memcpy(charbuf, intbuf, sizeof(intbuf));
+    memcpy(charbuf, intbuf, buflen);
     KFS_DO_OPER(ret = , cache, setxattr, co, path, KFS_XNAME("stat"), charbuf,
             buflen, 0);
     switch (ret) {
@@ -207,40 +207,63 @@ static int
 cache_unlink(const kfs_context_t co, const char *path)
 {
     struct kfs_subvolume * const subv = co->priv;
+    struct kfs_subvolume * const cache = subv + 1;
     int ret = 0;
 
     KFS_ENTER();
 
     KFS_DO_OPER(ret = , subv, unlink, co, path);
+    if (ret != 0) {
+        KFS_RETURN(ret);
+    }
+    KFS_DO_OPER(ret = , cache, unlink, co, path);
+    if (ret != 0 && ret != -ENOENT) {
+        KFS_ERROR("Corrupt cache: file \"%s\" could not be removed: %s", path,
+                strerror(-ret));
+    }
 
-    KFS_RETURN(ret);
+    KFS_RETURN(0);
 }
 
 static int
 cache_rmdir(const kfs_context_t co, const char *path)
 {
     struct kfs_subvolume * const subv = co->priv;
+    struct kfs_subvolume * const cache = subv + 1;
     int ret = 0;
 
     KFS_ENTER();
 
     KFS_DO_OPER(ret = , subv, rmdir, co, path);
+    if (ret != 0) {
+        KFS_RETURN(ret);
+    }
+    KFS_DO_OPER(ret = , cache, rmdir, co, path);
+    if (ret != 0) {
+        KFS_ERROR("Corrupt cache: directory \"%s\" could not be removed: %s",
+                path, strerror(-ret));
+    }
 
-    KFS_RETURN(ret);
+    KFS_RETURN(0);
 }
 
-/**
- * No translation takes place for the path1 argument.
- */
 static int
 cache_symlink(const kfs_context_t co, const char *path1, const char *path2)
 {
     struct kfs_subvolume * const subv = co->priv;
+    struct kfs_subvolume * const cache = subv + 1;
     int ret = 0;
 
     KFS_ENTER();
 
     KFS_DO_OPER(ret = , subv, symlink, co, path1, path2);
+    if (ret != 0) {
+        KFS_RETURN(ret);
+    }
+    KFS_DO_OPER(ret = , cache, symlink, co, path1, path2);
+    if (ret != 0) {
+        KFS_INFO("Error while caching symlink: %s.", strerror(-ret));
+    }
 
     KFS_RETURN(ret);
 }
@@ -249,11 +272,19 @@ static int
 cache_rename(const kfs_context_t co, const char *from, const char *to)
 {
     struct kfs_subvolume * const subv = co->priv;
+    struct kfs_subvolume * const cache = subv + 1;
     int ret = 0;
 
     KFS_ENTER();
 
     KFS_DO_OPER(ret = , subv, rename, co, from, to);
+    if (ret != 0) {
+        KFS_RETURN(ret);
+    }
+    KFS_DO_OPER(ret = , cache, rename, co, from, to);
+    if (ret != 0 && ret != -ENOENT) {
+        KFS_INFO("Error while caching file rename: %s.", strerror(-ret));
+    }
 
     KFS_RETURN(ret);
 }
@@ -262,11 +293,19 @@ static int
 cache_link(const kfs_context_t co, const char *from, const char *to)
 {
     struct kfs_subvolume * const subv = co->priv;
+    struct kfs_subvolume * const cache = subv + 1;
     int ret = 0;
 
     KFS_ENTER();
 
     KFS_DO_OPER(ret = , subv, link, co, from, to);
+    if (ret != 0) {
+        KFS_RETURN(ret);
+    }
+    KFS_DO_OPER(ret = , cache, link, co, from, to);
+    if (ret != 0 && ret != -ENOENT) {
+        KFS_INFO("Error while caching hardlink: %s.", strerror(-ret));
+    }
 
     KFS_RETURN(ret);
 }
@@ -275,24 +314,75 @@ static int
 cache_chmod(const kfs_context_t co, const char *path, mode_t mode)
 {
     struct kfs_subvolume * const subv = co->priv;
+    struct kfs_subvolume * const cache = subv + 1;
+    uint32_t intbuf[13];
+    const size_t buflen = sizeof(intbuf);
+    char charbuf[buflen];
+    struct stat _stbuf;
+    struct stat * const stbuf = &_stbuf;
     int ret = 0;
 
     KFS_ENTER();
 
     KFS_DO_OPER(ret = , subv, chmod, co, path, mode);
+    if (ret != 0) {
+        KFS_RETURN(ret);
+    }
+    /* Get the attributes of this file (reuse this module's getattr()). */
+    co->priv = subv;
+    ret = cache_getattr(co, path, stbuf);
+    if (ret != 0) {
+        /* If getattr() fails this can not be cached (but chmod() succeeded). */
+        KFS_RETURN(0);
+    }
+    /* Update those attributes. */
+    stbuf->st_mode = mode;
+    serialise_stat(intbuf, stbuf);
+    memcpy(charbuf, intbuf, buflen);
+    KFS_DO_OPER(ret = , cache, setxattr, co, path, KFS_XNAME("stat"), charbuf,
+            buflen, 0);
+    if (ret != 0) {
+        KFS_INFO("Error while caching metadata: %s.", strerror(-ret));
+    }
 
-    KFS_RETURN(ret);
+    KFS_RETURN(0);
 }
 
 static int
 cache_chown(const kfs_context_t co, const char *path, uid_t uid, gid_t gid)
 {
     struct kfs_subvolume * const subv = co->priv;
+    struct kfs_subvolume * const cache = subv + 1;
+    uint32_t intbuf[13];
+    const size_t buflen = sizeof(intbuf);
+    char charbuf[buflen];
+    struct stat _stbuf;
+    struct stat * const stbuf = &_stbuf;
     int ret = 0;
 
     KFS_ENTER();
 
     KFS_DO_OPER(ret = , subv, chown, co, path, uid, gid);
+    if (ret != 0) {
+        KFS_RETURN(ret);
+    }
+    /* Get the attributes of this file (reuse this module's getattr()). */
+    co->priv = subv;
+    ret = cache_getattr(co, path, stbuf);
+    if (ret != 0) {
+        /* If getattr() fails this can not be cached (still return 0). */
+        KFS_RETURN(0);
+    }
+    /* Update those attributes. */
+    stbuf->st_uid = uid;
+    stbuf->st_gid = gid;
+    serialise_stat(intbuf, stbuf);
+    memcpy(charbuf, intbuf, buflen);
+    KFS_DO_OPER(ret = , cache, setxattr, co, path, KFS_XNAME("stat"), charbuf,
+            buflen, 0);
+    if (ret != 0) {
+        KFS_INFO("Error while caching metadata: %s.", strerror(-ret));
+    }
 
     KFS_RETURN(ret);
 }
