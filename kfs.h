@@ -44,6 +44,34 @@
 #    define ntohll(x) ((((uint64_t)ntohl(x)) << 32) + ntohl((x) >> 32))
 #  endif
 #endif
+/**
+ * Perform file operation, after setting proper state. Example usage:
+ *
+ * int
+ * somefunc(struct kfs_subvolume subv, kfs_context_t co)
+ * {
+ *   int ret;
+ *
+ *   KFS_DO_OPER(ret = , subv, unlink, co, "/foo");
+ *   if (ret == 0) {
+ *     printf("Success.");
+ *   } else {
+ *     printf("Failure.");
+ *   }
+ *
+ *   return ret;
+ * }
+ *
+ * The odd notation is a direct result of the constraints of the C syntax and
+ * its preprocessor, combined with a "explicit is better than implicit" mantra.
+ * At least, somebody reading this will know that something weird is going on
+ * with ret.
+ */
+#define KFS_DO_OPER(ret, brick, op, co, ...) \
+    do { \
+        (co)->priv = (brick)->private_data; \
+        ret (brick)->oper->op(co, ## __VA_ARGS__); \
+    } while (0)
 
 #define KFS_ASSERT assert
 /* KFS_NASSERT is executed verbatim in NON-debugging mode. */

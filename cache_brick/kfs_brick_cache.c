@@ -58,8 +58,7 @@ cache_getattr(const kfs_context_t co, const char *path, struct stat *stbuf)
     KFS_ENTER();
 
     /* Check if data is already cached. */
-    co->priv = cache->private_data;
-    ret = cache->oper->getxattr(co, path, KFS_XNAME("stat"), charbuf,
+    KFS_DO_OPER(ret = , cache, getxattr, co, path, KFS_XNAME("stat"), charbuf,
             buflen);
     if (ret == buflen) {
         /* Success: the file metadata is cached. */
@@ -68,16 +67,14 @@ cache_getattr(const kfs_context_t co, const char *path, struct stat *stbuf)
         KFS_RETURN(0);
     }
     /* There is no cached data of expected size. */
-    co->priv = subv->private_data;
-    ret = subv->oper->getattr(co, path, stbuf);
+    KFS_DO_OPER(ret = , subv, getattr, co, path, stbuf);
     if (ret != 0) {
         KFS_RETURN(ret);
     }
     /* But the file exists! Cache the metadata. */
     serialise_stat(intbuf, stbuf);
     memcpy(charbuf, intbuf, sizeof(intbuf));
-    co->priv = cache->private_data;
-    ret = cache->oper->setxattr(co, path, KFS_XNAME("stat"), charbuf,
+    KFS_DO_OPER(ret = , cache, setxattr, co, path, KFS_XNAME("stat"), charbuf,
             buflen, 0);
     switch (ret) {
     case 0:
@@ -88,8 +85,7 @@ cache_getattr(const kfs_context_t co, const char *path, struct stat *stbuf)
         break;
     case -ENOENT:
         /* The file does not exist. Create it and wait for next getattr call. */
-        co->priv = cache->private_data;
-        ret = cache->oper->mknod(co, path, S_IRUSR | S_IWUSR, 0);
+        KFS_DO_OPER(ret = , cache, mknod, co, path, S_IRUSR | S_IWUSR, 0);
         if (ret == 0) {
             break;
         }
@@ -113,13 +109,11 @@ cache_readlink(const kfs_context_t co, const char *path, char *buf, size_t
     KFS_ENTER();
 
     /* Check cache. */
-    co->priv = cache->private_data;
-    ret = cache->oper->readlink(co, path, buf, size);
+    KFS_DO_OPER(ret = , cache, readlink, co, path, buf, size);
     switch (ret) {
     case -EINVAL:
         /* The cache has this file but it is not a symlink. Delete it. */
-        co->priv = cache->private_data;
-        cache->oper->unlink(co, path);
+        KFS_DO_OPER(/**/, cache, unlink, co, path);
         break;
     case 0:
         KFS_RETURN(ret);
@@ -127,8 +121,7 @@ cache_readlink(const kfs_context_t co, const char *path, char *buf, size_t
     default:
         break;
     }
-    co->priv = subv->private_data;
-    ret = subv->oper->readlink(co, path, buf, size);
+    KFS_DO_OPER(ret = , subv, readlink, co, path, buf, size);
     /**
      * Do not cache incomplete results. Thanks to the API the only way to be
      * sure that the result was not truncated is check whether the buffer was
@@ -138,8 +131,7 @@ cache_readlink(const kfs_context_t co, const char *path, char *buf, size_t
         KFS_RETURN(ret);
     }
     /* Cache. */
-    co->priv = cache->private_data;
-    ret = cache->oper->symlink(co, buf, path);
+    KFS_DO_OPER(ret = , cache, symlink, co, buf, path);
     if (ret != 0) {
         KFS_INFO("Error while caching symlink: %s.", strerror(-ret));
     }
@@ -157,13 +149,11 @@ cache_mknod(const kfs_context_t co, const char *path, mode_t mode, dev_t dev)
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->mknod(co, path, mode, dev);
+    KFS_DO_OPER(ret = , subv, mknod, co, path, mode, dev);
     if (ret != 0) {
         KFS_RETURN(ret);
     }
-    co->priv = cache->private_data;
-    ret = cache->oper->mknod(co, path, mode, dev);
+    KFS_DO_OPER(ret = , cache, mknod, co, path, mode, dev);
     if (ret != 0) {
         KFS_INFO("Error while caching new node: %s.", strerror(-ret));
     }
@@ -181,18 +171,15 @@ cache_truncate(const kfs_context_t co, const char *path, off_t offset)
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->truncate(co, path, offset);
+    KFS_DO_OPER(ret = , subv, truncate, co, path, offset);
     if (ret != 0) {
         KFS_RETURN(ret);
     }
-    co->priv = cache->private_data;
-    ret = cache->oper->truncate(co, path, offset);
+    KFS_DO_OPER(ret = , cache, truncate, co, path, offset);
     if (ret != 0 && ret != -ENOENT) {
         KFS_INFO("Error while truncating cached file: %s.", strerror(-ret));
         /* Only one recourse to keep cache coherent: remove the cached file. */
-        co->priv = cache->private_data;
-        ret = cache->oper->unlink(co, path);
+        KFS_DO_OPER(ret = , cache, unlink, co, path);
         if (ret != 0) {
             KFS_ERROR("Corrupt cache: file \"%s\" could not be removed: %s",
                     path, strerror(-ret));
@@ -211,8 +198,7 @@ cache_open(const kfs_context_t co, const char *path, struct fuse_file_info *fi)
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->open(co, path, fi);
+    KFS_DO_OPER(ret = , subv, open, co, path, fi);
 
     KFS_RETURN(ret);
 }
@@ -225,8 +211,7 @@ cache_unlink(const kfs_context_t co, const char *path)
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->unlink(co, path);
+    KFS_DO_OPER(ret = , subv, unlink, co, path);
 
     KFS_RETURN(ret);
 }
@@ -239,8 +224,7 @@ cache_rmdir(const kfs_context_t co, const char *path)
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->rmdir(co, path);
+    KFS_DO_OPER(ret = , subv, rmdir, co, path);
 
     KFS_RETURN(ret);
 }
@@ -256,8 +240,7 @@ cache_symlink(const kfs_context_t co, const char *path1, const char *path2)
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->symlink(co, path1, path2);
+    KFS_DO_OPER(ret = , subv, symlink, co, path1, path2);
 
     KFS_RETURN(ret);
 }
@@ -270,8 +253,7 @@ cache_rename(const kfs_context_t co, const char *from, const char *to)
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->rename(co, from, to);
+    KFS_DO_OPER(ret = , subv, rename, co, from, to);
 
     KFS_RETURN(ret);
 }
@@ -284,8 +266,7 @@ cache_link(const kfs_context_t co, const char *from, const char *to)
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->link(co, from, to);
+    KFS_DO_OPER(ret = , subv, link, co, from, to);
 
     KFS_RETURN(ret);
 }
@@ -298,8 +279,7 @@ cache_chmod(const kfs_context_t co, const char *path, mode_t mode)
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->chmod(co, path, mode);
+    KFS_DO_OPER(ret = , subv, chmod, co, path, mode);
 
     KFS_RETURN(ret);
 }
@@ -312,8 +292,7 @@ cache_chown(const kfs_context_t co, const char *path, uid_t uid, gid_t gid)
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->chown(co, path, uid, gid);
+    KFS_DO_OPER(ret = , subv, chown, co, path, uid, gid);
 
     KFS_RETURN(ret);
 }
@@ -327,8 +306,7 @@ cache_read(const kfs_context_t co, const char *path, char *buf, size_t size,
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->read(co, path, buf, size, offset, fi);
+    KFS_DO_OPER(ret = , subv, read, co, path, buf, size, offset, fi);
 
     KFS_RETURN(ret);
 }
@@ -342,8 +320,7 @@ cache_write(const kfs_context_t co, const char *path, const char *buf, size_t
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->write(co, path, buf, size, offset, fi);
+    KFS_DO_OPER(ret = , subv, write, co, path, buf, size, offset, fi);
 
     KFS_RETURN(ret);
 }
@@ -356,8 +333,7 @@ cache_statfs(const kfs_context_t co, const char *path, struct statvfs *stbuf)
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->statfs(co, path, stbuf);
+    KFS_DO_OPER(ret = , subv, statfs, co, path, stbuf);
 
     KFS_RETURN(ret);
 }
@@ -371,8 +347,7 @@ cache_flush(const kfs_context_t co, const char *path, struct fuse_file_info
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->flush(co, path, fi);
+    KFS_DO_OPER(ret = , subv, flush, co, path, fi);
 
     KFS_RETURN(ret);
 }
@@ -386,8 +361,7 @@ cache_release(const kfs_context_t co, const char *path, struct fuse_file_info
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->release(co, path, fi);
+    KFS_DO_OPER(ret = , subv, release, co, path, fi);
 
     KFS_RETURN(ret);
 }
@@ -401,8 +375,7 @@ cache_fsync(const kfs_context_t co, const char *path, int isdatasync, struct
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->fsync(co, path, isdatasync, fi);
+    KFS_DO_OPER(ret = , subv, fsync, co, path, isdatasync, fi);
 
     KFS_RETURN(ret);
 }
@@ -421,8 +394,7 @@ cache_setxattr(const kfs_context_t co, const char *path, const char *name,
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->setxattr(co, path, name, value, size, flags);
+    KFS_DO_OPER(ret = , subv, setxattr, co, path, name, value, size, flags);
 
     KFS_RETURN(ret);
 }
@@ -436,8 +408,7 @@ cache_getxattr(const kfs_context_t co, const char *path, const char *name, char
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->getxattr(co, path, name, value, size);
+    KFS_DO_OPER(ret = , subv, getxattr, co, path, name, value, size);
 
     KFS_RETURN(ret);
 }
@@ -451,8 +422,7 @@ cache_listxattr(const kfs_context_t co, const char *path, char *list, size_t
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->listxattr(co, path, list, size);
+    KFS_DO_OPER(ret = , subv, listxattr, co, path, list, size);
 
     KFS_RETURN(ret);
 }
@@ -465,8 +435,7 @@ cache_removexattr(const kfs_context_t co, const char *path, const char *name)
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->removexattr(co, path, name);
+    KFS_DO_OPER(ret = , subv, removexattr, co, path, name);
 
     KFS_RETURN(ret);
 }
@@ -483,8 +452,7 @@ cache_mkdir(const kfs_context_t co, const char *path, mode_t mode)
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->mkdir(co, path, mode);
+    KFS_DO_OPER(ret = , subv, mkdir, co, path, mode);
 
     KFS_RETURN(ret);
 }
@@ -498,8 +466,7 @@ cache_opendir(const kfs_context_t co, const char *path, struct fuse_file_info
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->opendir(co, path, fi);
+    KFS_DO_OPER(ret = , subv, opendir, co, path, fi);
 
     KFS_RETURN(ret);
 }
@@ -516,8 +483,7 @@ cache_readdir(const kfs_context_t co, const char *path, void *buf,
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->readdir(co, path, buf, filler, offset, fi);
+    KFS_DO_OPER(ret = , subv, readdir, co, path, buf, filler, offset, fi);
 
     KFS_RETURN(ret);
 }
@@ -530,8 +496,7 @@ cache_releasedir(const kfs_context_t co, const char *path, struct fuse_file_info
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->releasedir(co, path, fi);
+    KFS_DO_OPER(ret = , subv, releasedir, co, path, fi);
 
     KFS_RETURN(ret);
 }
@@ -545,8 +510,7 @@ cache_fsyncdir(const kfs_context_t co, const char *path, int isdatasync, struct
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->fsyncdir(co, path, isdatasync, fi);
+    KFS_DO_OPER(ret = , subv, fsyncdir, co, path, isdatasync, fi);
 
     KFS_RETURN(ret);
 }
@@ -559,8 +523,7 @@ cache_access(const kfs_context_t co, const char *path, int mask)
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->access(co, path, mask);
+    KFS_DO_OPER(ret = , subv, access, co, path, mask);
 
     KFS_RETURN(ret);
 }
@@ -574,8 +537,7 @@ cache_create(const kfs_context_t co, const char *path, mode_t mode, struct
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->create(co, path, mode, fi);
+    KFS_DO_OPER(ret = , subv, create, co, path, mode, fi);
 
     KFS_RETURN(ret);
 }
@@ -589,8 +551,7 @@ cache_ftruncate(const kfs_context_t co, const char *path, off_t size, struct
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->ftruncate(co, path, size, fi);
+    KFS_DO_OPER(ret = , subv, ftruncate, co, path, size, fi);
     
     KFS_RETURN(ret);
 }
@@ -604,8 +565,7 @@ cache_fgetattr(const kfs_context_t co, const char *path, struct stat *stbuf,
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->fgetattr(co, path, stbuf, fi);
+    KFS_DO_OPER(ret = , subv, fgetattr, co, path, stbuf, fi);
 
     KFS_RETURN(ret);
 }
@@ -619,8 +579,7 @@ cache_lock(const kfs_context_t co, const char *path, struct fuse_file_info *fi,
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->lock(co, path, fi, cmd, lock);
+    KFS_DO_OPER(ret = , subv, lock, co, path, fi, cmd, lock);
 
     KFS_RETURN(ret);
 }
@@ -634,8 +593,7 @@ cache_utimens(const kfs_context_t co, const char *path, const struct timespec
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->utimens(co, path, tvnano);
+    KFS_DO_OPER(ret = , subv, utimens, co, path, tvnano);
 
     KFS_RETURN(ret);
 }
@@ -649,8 +607,7 @@ cache_bmap(const kfs_context_t co, const char *path, size_t blocksize, uint64_t
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->bmap(co, path, blocksize, idx);
+    KFS_DO_OPER(ret = , subv, bmap, co, path, blocksize, idx);
 
     KFS_RETURN(ret);
 }
@@ -665,8 +622,7 @@ cache_ioctl(const kfs_context_t co, const char *path, int cmd, void *arg,
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->ioctl(co, path, cmd, arg, fi, flags, data);
+    KFS_DO_OPER(ret = , subv, ioctl, co, path, cmd, arg, fi, flags, data);
 
     KFS_RETURN(ret);
 }
@@ -682,8 +638,7 @@ cache_poll(const kfs_context_t co, const char *path, struct fuse_file_info *fi,
 
     KFS_ENTER();
 
-    co->priv = subv->private_data;
-    ret = subv->oper->poll(co, path, fi, ph, reventsp);
+    KFS_DO_OPER(ret = , subv, poll, co, path, fi, ph, reventsp);
 
     KFS_RETURN(ret);
 }
