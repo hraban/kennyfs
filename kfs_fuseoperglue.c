@@ -19,130 +19,537 @@
 static const struct kfs_operations *oper = NULL;
 static void *root_private_data = NULL;
 
-static inline const kfs_context_t
-kfs_get_context(void)
+static kfs_context_t
+kfs_init_context(kfs_context_t kfs_c)
 {
-    return fuse_get_context();
+    struct fuse_context *fuse_c;
+
+    KFS_ENTER();
+
+    fuse_c = fuse_get_context();
+    kfs_c->uid = fuse_c->uid;
+    kfs_c->gid = fuse_c->gid;
+    kfs_c->priv = fuse_c->private_data;
+
+    KFS_RETURN(kfs_c);
 }
 
-static int root_getattr(const char *p, struct stat *s)
-{ int r; KFS_ENTER(); r = oper->getattr(kfs_get_context(), p, s); KFS_RETURN(r);
+static int
+root_getattr(const char *p, struct stat *s)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->getattr(&co, p, s);
+
+    KFS_RETURN(r);
 }
-static int root_readlink(const char *p, char *b, size_t s)
-{ int r; KFS_ENTER(); r = oper->readlink(kfs_get_context(), p, b, s);
-    KFS_RETURN(r); }
-static int root_mknod(const char *p, mode_t m, dev_t d)
-{ int r; KFS_ENTER(); r = oper->mknod(kfs_get_context(), p, m, d);
-    KFS_RETURN(r); }
-static int root_mkdir(const char *p, mode_t m)
-{ int r; KFS_ENTER(); r = oper->mkdir(kfs_get_context(), p, m); KFS_RETURN(r); }
-static int root_unlink(const char *p)
-{ int r; KFS_ENTER(); r = oper->unlink(kfs_get_context(), p); KFS_RETURN(r); }
-static int root_rmdir(const char *p)
-{ int r; KFS_ENTER(); r = oper->rmdir(kfs_get_context(), p); KFS_RETURN(r); }
-static int root_symlink(const char *p1, const char *p2)
-{ int r; KFS_ENTER(); r = oper->symlink(kfs_get_context(), p1, p2);
-    KFS_RETURN(r); }
-static int root_rename(const char *p1, const char *p2)
-{ int r; KFS_ENTER(); r = oper->rename(kfs_get_context(), p1, p2);
-    KFS_RETURN(r); }
-static int root_link(const char *p1, const char *p2)
-{ int r; KFS_ENTER(); r = oper->link(kfs_get_context(), p1, p2); KFS_RETURN(r);
+
+static int
+root_readlink(const char *p, char *b, size_t s)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->readlink(&co, p, b, s);
+
+    KFS_RETURN(r);
 }
-static int root_chmod(const char *p, mode_t m)
-{ int r; KFS_ENTER(); r = oper->chmod(kfs_get_context(), p, m); KFS_RETURN(r); }
-static int root_chown(const char *p, uid_t u, gid_t g)
-{ int r; KFS_ENTER(); r = oper->chown(kfs_get_context(), p, u, g);
-    KFS_RETURN(r); }
-static int root_truncate(const char *p, off_t o)
-{ int r; KFS_ENTER(); r = oper->truncate(kfs_get_context(), p, o);
-    KFS_RETURN(r); }
-static int root_open(const char *p, struct fuse_file_info *f)
-{ int r; KFS_ENTER(); r = oper->open(kfs_get_context(), p, f); KFS_RETURN(r); }
-static int root_read(const char *p, char *b, size_t s, off_t o, struct
+
+static int
+root_mknod(const char *p, mode_t m, dev_t d)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->mknod(&co, p, m, d);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_mkdir(const char *p, mode_t m)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->mkdir(&co, p, m);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_unlink(const char *p)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->unlink(&co, p);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_rmdir(const char *p)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->rmdir(&co, p);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_symlink(const char *p1, const char *p2)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->symlink(&co, p1, p2);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_rename(const char *p1, const char *p2)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->rename(&co, p1, p2);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_link(const char *p1, const char *p2)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->link(&co, p1, p2);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_chmod(const char *p, mode_t m)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->chmod(&co, p, m);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_chown(const char *p, uid_t u, gid_t g)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->chown(&co, p, u, g);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_truncate(const char *p, off_t o)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->truncate(&co, p, o);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_open(const char *p, struct fuse_file_info *f)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->open(&co, p, f);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_read(const char *p, char *b, size_t s, off_t o, struct fuse_file_info *f)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->read(&co, p, b, s, o, f);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_write(const char *p, const char *b, size_t s, off_t o, struct
         fuse_file_info *f)
-{ int r; KFS_ENTER(); r = oper->read(kfs_get_context(), p, b, s, o, f);
-    KFS_RETURN(r); }
-static int root_write(const char *p, const char *b, size_t s, off_t o, struct
-        fuse_file_info *f)
-{ int r; KFS_ENTER(); r = oper->write(kfs_get_context(), p, b, s, o, f);
-    KFS_RETURN(r); }
-static int root_statfs(const char *p, struct statvfs *s)
-{ int r; KFS_ENTER(); r = oper->statfs(kfs_get_context(), p, s); KFS_RETURN(r);
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->write(&co, p, b, s, o, f);
+
+    KFS_RETURN(r);
 }
-static int root_flush(const char *p, struct fuse_file_info *f)
-{ int r; KFS_ENTER(); r = oper->flush(kfs_get_context(), p, f); KFS_RETURN(r); }
-static int root_release(const char *p, struct fuse_file_info *f)
-{ int r; KFS_ENTER(); r = oper->release(kfs_get_context(), p, f); KFS_RETURN(r);
+
+static int
+root_statfs(const char *p, struct statvfs *s)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->statfs(&co, p, s);
+
+    KFS_RETURN(r);
 }
-static int root_fsync(const char *p, int i, struct fuse_file_info *f)
-{ int r; KFS_ENTER(); r = oper->fsync(kfs_get_context(), p, i, f);
-    KFS_RETURN(r); }
-static int root_setxattr(const char *p, const char *k, const char *v, size_t s,
+
+static int
+root_flush(const char *p, struct fuse_file_info *f)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->flush(&co, p, f);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_release(const char *p, struct fuse_file_info *f)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->release(&co, p, f);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_fsync(const char *p, int i, struct fuse_file_info *f)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->fsync(&co, p, i, f);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_setxattr(const char *p, const char *k, const char *v, size_t s,
         int i)
-{ int r; KFS_ENTER(); r = oper->setxattr(kfs_get_context(), p, k, v, s, i);
-    KFS_RETURN(r); }
-static int root_getxattr(const char *p, const char *k, char *b, size_t s)
-{ int r; KFS_ENTER(); r = oper->getxattr(kfs_get_context(), p, k, b, s);
-    KFS_RETURN(r); }
-static int root_listxattr(const char *p, char *b, size_t s)
-{ int r; KFS_ENTER(); r = oper->listxattr(kfs_get_context(), p, b, s);
-    KFS_RETURN(r); }
-static int root_removexattr(const char *p, const char *k)
-{ int r; KFS_ENTER(); r = oper->removexattr(kfs_get_context(), p, k);
-    KFS_RETURN(r); }
-static int root_opendir(const char *p, struct fuse_file_info *f)
-{ int r; KFS_ENTER(); r = oper->opendir(kfs_get_context(), p, f); KFS_RETURN(r);
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->setxattr(&co, p, k, v, s, i);
+
+    KFS_RETURN(r);
 }
-static int root_readdir(const char *p, void *b, fuse_fill_dir_t f, off_t o,
-        struct fuse_file_info *fi)
-{ int r; KFS_ENTER(); r = oper->readdir(kfs_get_context(), p, b, f, o, fi);
-    KFS_RETURN(r); }
-static int root_releasedir(const char *p, struct fuse_file_info *f)
-{ int r; KFS_ENTER(); r = oper->releasedir(kfs_get_context(), p, f);
-    KFS_RETURN(r); }
-static int root_fsyncdir(const char *p, int i, struct fuse_file_info *f)
-{ int r; KFS_ENTER(); r = oper->fsyncdir(kfs_get_context(), p, i, f);
-    KFS_RETURN(r); }
-static int root_access(const char *p, int i)
-{ int r; KFS_ENTER(); r = oper->access(kfs_get_context(), p, i); KFS_RETURN(r);
+
+static int
+root_getxattr(const char *p, const char *k, char *b, size_t s)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->getxattr(&co, p, k, b, s);
+
+    KFS_RETURN(r);
 }
-static int root_create(const char *p, mode_t m, struct fuse_file_info *f)
-{ int r; KFS_ENTER(); r = oper->create(kfs_get_context(), p, m, f);
-    KFS_RETURN(r); }
-static int root_ftruncate(const char *p, off_t o, struct fuse_file_info *f)
-{ int r; KFS_ENTER(); r = oper->ftruncate(kfs_get_context(), p, o, f);
-    KFS_RETURN(r); }
-static int root_fgetattr(const char *p, struct stat *s, struct fuse_file_info
-        *f)
-{ int r; KFS_ENTER(); r = oper->fgetattr(kfs_get_context(), p, s, f);
-    KFS_RETURN(r); }
-static int root_lock(const char *p, struct fuse_file_info *f, int i, struct
-        flock *l)
-{ int r; KFS_ENTER(); r = oper->lock(kfs_get_context(), p, f, i, l);
-    KFS_RETURN(r); }
-static int root_utimens(const char *p, const struct timespec t[2])
-{ int r; KFS_ENTER(); r = oper->utimens(kfs_get_context(), p, t); KFS_RETURN(r);
+
+static int
+root_listxattr(const char *p, char *b, size_t s)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->listxattr(&co, p, b, s);
+
+    KFS_RETURN(r);
 }
-static int root_bmap(const char *p, size_t s, uint64_t *i)
-{ int r; KFS_ENTER(); r = oper->bmap(kfs_get_context(), p, s, i); KFS_RETURN(r);
+
+static int
+root_removexattr(const char *p, const char *k)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->removexattr(&co, p, k);
+
+    KFS_RETURN(r);
 }
+
+static int
+root_opendir(const char *p, struct fuse_file_info *f)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->opendir(&co, p, f);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_readdir(const char *p, void *b, fuse_fill_dir_t f, off_t o, struct
+        fuse_file_info *fi)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->readdir(&co, p, b, f, o, fi);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_releasedir(const char *p, struct fuse_file_info *f)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->releasedir(&co, p, f);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_fsyncdir(const char *p, int i, struct fuse_file_info *f)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->fsyncdir(&co, p, i, f);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_access(const char *p, int i)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->access(&co, p, i);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_create(const char *p, mode_t m, struct fuse_file_info *f)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->create(&co, p, m, f);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_ftruncate(const char *p, off_t o, struct fuse_file_info *f)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->ftruncate(&co, p, o, f);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_fgetattr(const char *p, struct stat *s, struct fuse_file_info *f)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->fgetattr(&co, p, s, f);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_lock(const char *p, struct fuse_file_info *f, int i, struct flock *l)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->lock(&co, p, f, i, l);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_utimens(const char *p, const struct timespec t[2])
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->utimens(&co, p, t);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_bmap(const char *p, size_t s, uint64_t *i)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->bmap(&co, p, s, i);
+
+    KFS_RETURN(r);
+}
+
 #if FUSE_VERSION >= 28
-static int root_ioctl(const char *p, int i, void *v, struct fuse_file_info *f,
-        uint_t u, void *d)
-{ int r; KFS_ENTER(); r = oper->ioctl(kfs_get_context(), p, i, v, f, u, d);
-    KFS_RETURN(r); }
-static int root_poll(const char *p, struct fuse_file_info *f, struct
-        fuse_pollhandle *h, uint_t *u)
-{ int r; KFS_ENTER(); r = oper->poll(kfs_get_context(), p, f, h, u);
-    KFS_RETURN(r); }
+static int
+root_ioctl(const char *p, int i, void *v, struct fuse_file_info *f, uint_t u,
+        void *d)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->ioctl(&co, p, i, v, f, u, d);
+
+    KFS_RETURN(r);
+}
+
+static int
+root_poll(const char *p, struct fuse_file_info *f, struct fuse_pollhandle *h,
+        uint_t *u)
+{
+    struct kfs_context co;
+    int r = 0;
+
+    KFS_ENTER();
+
+    kfs_init_context(&co);
+    r = oper->poll(&co, p, f, h, u);
+
+    KFS_RETURN(r);
+}
 #endif
 
 /**
  * The first operation invoked by FUSE is init(). Its return value is stored as
- * the private_data field of the fuse context. KennyFS does it differently:
- * init() is part of the brick API, it is not an operation. This function
- * handles the translation.
+ * the priv field of the fuse context. KennyFS does it differently: init() is
+ * part of the brick API, it is not an operation. This function handles the
+ * translation.
  */
 static void *
 root_init(struct fuse_conn_info *conn)

@@ -56,7 +56,7 @@
 static int
 posix_getattr(const kfs_context_t co, const char *fusepath, struct stat *stbuf)
 {
-    const char * const mountroot = co->private_data;
+    const char * const mountroot = co->priv;
     int ret = 0;
     /* On-stack buffer for paths of limited length. Otherwise: malloc(). */
     char pathbuf[PATHBUF_SIZE];
@@ -80,7 +80,7 @@ posix_getattr(const kfs_context_t co, const char *fusepath, struct stat *stbuf)
 static int
 posix_access(const kfs_context_t co, const char *fusepath, int mask)
 {
-    const char * const mountroot = co->private_data;
+    const char * const mountroot = co->priv;
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
     int ret = 0;
@@ -104,7 +104,7 @@ static int
 posix_create(const kfs_context_t co, const char *fusepath, mode_t mode, struct
         fuse_file_info *fi)
 {
-    const char * const mountroot = co->private_data;
+    const char * const mountroot = co->priv;
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
     int ret = 0;
@@ -174,7 +174,7 @@ static int
 posix_readlink(const kfs_context_t co, const char *fusepath, char *buf, size_t
         size)
 {
-    const char * const mountroot = co->private_data;
+    const char * const mountroot = co->priv;
     char pathbuf[PATHBUF_SIZE];
     ssize_t ret = 0;
     char *fullpath = NULL;
@@ -203,7 +203,7 @@ static int
 posix_mknod(const kfs_context_t co, const char *fusepath, mode_t mode, dev_t
         dev)
 {
-    const char * const mountroot = co->private_data;
+    const char * const mountroot = co->priv;
     char pathbuf[PATHBUF_SIZE];
     int ret = 0;
     char *fullpath = NULL;
@@ -227,7 +227,7 @@ posix_mknod(const kfs_context_t co, const char *fusepath, mode_t mode, dev_t
 static int
 posix_truncate(const kfs_context_t co, const char *fusepath, off_t offset)
 {
-    const char * const mountroot = co->private_data;
+    const char * const mountroot = co->priv;
     char pathbuf[PATHBUF_SIZE];
     int ret = 0;
     char *fullpath = NULL;
@@ -251,7 +251,7 @@ static int
 posix_open(const kfs_context_t co, const char *fusepath, struct fuse_file_info
         *fi)
 {
-    const char * const mountroot = co->private_data;
+    const char * const mountroot = co->priv;
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
     int ret = 0;
@@ -278,7 +278,7 @@ posix_open(const kfs_context_t co, const char *fusepath, struct fuse_file_info
 static int
 posix_unlink(const kfs_context_t co, const char *fusepath)
 {
-    const char * const mountroot = co->private_data;
+    const char * const mountroot = co->priv;
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
     int ret = 0;
@@ -302,7 +302,7 @@ posix_unlink(const kfs_context_t co, const char *fusepath)
 static int
 posix_rmdir(const kfs_context_t co, const char *fusepath)
 {
-    const char * const mountroot = co->private_data;
+    const char * const mountroot = co->priv;
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
     int ret = 0;
@@ -328,7 +328,7 @@ posix_rmdir(const kfs_context_t co, const char *fusepath)
 static int
 posix_symlink(const kfs_context_t co, const char *path1, const char *path2)
 {
-    const char * const mountroot = co->private_data;
+    const char * const mountroot = co->priv;
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
     int ret = 0;
@@ -348,7 +348,7 @@ posix_symlink(const kfs_context_t co, const char *path1, const char *path2)
 static int
 posix_rename(const kfs_context_t co, const char *from, const char *to)
 {
-    const char * const mountroot = co->private_data;
+    const char * const mountroot = co->priv;
     char pathbuf_from[PATHBUF_SIZE];
     char pathbuf_to[PATHBUF_SIZE];
     char *fullpath_from = NULL;
@@ -374,7 +374,7 @@ posix_rename(const kfs_context_t co, const char *from, const char *to)
 static int
 posix_link(const kfs_context_t co, const char *from, const char *to)
 {
-    const char * const mountroot = co->private_data;
+    const char * const mountroot = co->priv;
     char pathbuf_from[PATHBUF_SIZE];
     char pathbuf_to[PATHBUF_SIZE];
     char *fullpath_from = NULL;
@@ -400,7 +400,7 @@ posix_link(const kfs_context_t co, const char *from, const char *to)
 static int
 posix_chmod(const kfs_context_t co, const char *fusepath, mode_t mode)
 {
-    const char * const mountroot = co->private_data;
+    const char * const mountroot = co->priv;
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
     int ret = 0;
@@ -423,7 +423,7 @@ posix_chmod(const kfs_context_t co, const char *fusepath, mode_t mode)
 static int
 posix_chown(const kfs_context_t co, const char *fusepath, uid_t uid, gid_t gid)
 {
-    const char * const mountroot = co->private_data;
+    const char * const mountroot = co->priv;
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
     int ret = 0;
@@ -593,7 +593,7 @@ static int
 posix_setxattr(const kfs_context_t co, const char *fusepath, const char *name,
         const char *value, size_t size, int flags)
 {
-    const char * const mountroot = co->private_data;
+    const char * const mountroot = co->priv;
     char pathbuf[PATHBUF_SIZE];
     int ret = 0;
     char *fullpath = NULL;
@@ -618,7 +618,7 @@ static int
 posix_getxattr(const kfs_context_t co, const char *fusepath, const char *name,
         char *value, size_t size)
 {
-    const char * const mountroot = co->private_data;
+    const char * const mountroot = co->priv;
     char pathbuf[PATHBUF_SIZE];
     int ret = 0;
     char *fullpath = NULL;
@@ -642,7 +642,7 @@ static int
 posix_listxattr(const kfs_context_t co, const char *fusepath, char *list, size_t
         size)
 {
-    const char * const mountroot = co->private_data;
+    const char * const mountroot = co->priv;
     char pathbuf[PATHBUF_SIZE];
     ssize_t ret = 0;
     char *fullpath = NULL;
@@ -666,7 +666,7 @@ static int
 posix_removexattr(const kfs_context_t co, const char *fusepath, const char
         *name)
 {
-    const char * const mountroot = co->private_data;
+    const char * const mountroot = co->priv;
     char pathbuf[PATHBUF_SIZE];
     int ret = 0;
     char *fullpath = NULL;
@@ -693,7 +693,7 @@ posix_removexattr(const kfs_context_t co, const char *fusepath, const char
 static int
 posix_mkdir(const kfs_context_t co, const char *fusepath, mode_t mode)
 {
-    const char * const mountroot = co->private_data;
+    const char * const mountroot = co->priv;
     char pathbuf[PATHBUF_SIZE];
     int ret = 0;
     char *fullpath = NULL;
@@ -717,7 +717,7 @@ static int
 posix_opendir(const kfs_context_t co, const char *fusepath, struct
         fuse_file_info *fi)
 {
-    const char * const mountroot = co->private_data;
+    const char * const mountroot = co->priv;
     char pathbuf[PATHBUF_SIZE];
     char *fullpath = NULL;
     DIR *dir = NULL;
@@ -815,7 +815,7 @@ static int
 posix_utimens(const kfs_context_t co, const char *fusepath, const struct
         timespec tvnano[2])
 {
-    const char * const mountroot = co->private_data;
+    const char * const mountroot = co->priv;
     char pathbuf[PATHBUF_SIZE];
     struct timeval tvmicro[2];
     int ret = 0;

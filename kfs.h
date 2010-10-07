@@ -14,9 +14,9 @@
 #define KFS_ENTER() ((void) (0))
 #define KFS_RETURN(ret) return ret
 #ifdef KFS_LOG_TRACE
-#  include "kfs_logging.h"
 #  if defined(__GNUC__) || \
       defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
+#    include "kfs_logging.h"
 #    undef KFS_ENTER
 #    undef KFS_RETURN
      /* Function name is already printed by kfs_log in trace mode. */
@@ -32,6 +32,8 @@
  * the heap. Happens with kfs_bufstrcat().
  */
 #define PATHBUF_SIZE 256
+/** Prefix to all extended attributes used by kennyfs. */
+#define KFS_XATTR_NS "user.com.kennyfs"
 
 #ifndef htonll
 #  ifdef _BIG_ENDIAN

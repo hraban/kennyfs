@@ -148,8 +148,7 @@ kfs_init_context(kfs_context_t context)
 
     context->uid = getuid();
     context->gid = getgid();
-    context->pid = getpid();
-    context->private_data = private_data;
+    context->priv = private_data;
 
     KFS_RETURN(context);
 }
@@ -168,7 +167,7 @@ handle_getattr(client_t c, const char *rawop, size_t opsize)
     size_t bodysize = 0;
     int ret = 0;
     struct stat stbuf;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -201,7 +200,7 @@ handle_readlink(client_t c, const char *rawop, size_t opsize)
     int ret = 0;
     size_t bodysize = 0;
     char resultbuf[PATHBUF_SIZE + 8];
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -233,7 +232,7 @@ handle_mknod(client_t c, const char *rawop, size_t opsize)
     uint32_t mode_serialised = 0;
     mode_t mode;
     int ret = 0;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -262,7 +261,7 @@ handle_mkdir(client_t c, const char *rawop, size_t opsize)
     uint32_t mode_serialised = 0;
     mode_t mode;
     int ret = 0;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -288,7 +287,7 @@ handle_unlink(client_t c, const char *rawop, size_t opsize)
 
     char resultbuf[8];
     int ret = 0;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -311,7 +310,7 @@ handle_rmdir(client_t c, const char *rawop, size_t opsize)
 
     char resultbuf[8];
     int ret = 0;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -339,7 +338,7 @@ handle_symlink(client_t c, const char *rawop, size_t opsize)
     const char *path1 = NULL;
     const char *path2 = NULL;
     int ret = 0;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -375,7 +374,7 @@ handle_rename(client_t c, const char *rawop, size_t opsize)
     const char *path1 = NULL;
     const char *path2 = NULL;
     int ret = 0;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -411,7 +410,7 @@ handle_link(client_t c, const char *rawop, size_t opsize)
     const char *path1 = NULL;
     const char *path2 = NULL;
     int ret = 0;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -446,7 +445,7 @@ handle_chmod(client_t c, const char *rawop, size_t opsize)
     uint32_t mode_serialised = 0;
     mode_t mode;
     int ret = 0;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -478,7 +477,7 @@ handle_chown(client_t c, const char *rawop, size_t opsize)
     uid_t uid = 0;
     gid_t gid = 0;
     int ret = 0;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -510,7 +509,7 @@ handle_truncate(client_t c, const char *rawop, size_t opsize)
     uint64_t offset_serialised = 0;
     off_t offset = 0;
     int ret = 0;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -551,7 +550,7 @@ handle_open(client_t c, const char *rawop, size_t opsize)
     size_t bodysize = 0;
     int ret = 0;
     uint32_t val32 = 0;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -595,7 +594,7 @@ handle_read(client_t c, const char *rawop, size_t opsize)
     size_t len = 0;
     int ret = 0;
     uint32_t val32 = 0;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -646,7 +645,7 @@ handle_write(client_t c, const char *rawop, size_t opsize)
     uint64_t offset = 0;
     int ret = 0;
     size_t writelen = 0;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -676,7 +675,7 @@ handle_flush(client_t c, const char *rawop, size_t opsize)
     char resultbuf[8];
     struct fuse_file_info ffi;
     int ret = 0;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -702,7 +701,7 @@ handle_release(client_t c, const char *rawop, size_t opsize)
     char resultbuf[8];
     struct fuse_file_info ffi;
     int ret = 0;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -729,7 +728,7 @@ handle_fsync(client_t c, const char *rawop, size_t opsize)
     char resultbuf[8];
     struct fuse_file_info ffi;
     int ret = 0;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -761,7 +760,7 @@ handle_opendir(client_t c, const char *rawop, size_t opsize)
     dirfh_t * dirfh = NULL;
     int ret = 0;
     size_t reply_size = 0;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -876,7 +875,7 @@ handle_readdir(client_t c, const char *rawop, size_t opsize)
     dirfh_t *dirfh = NULL;
     readdir_fh_t *rdfh = NULL;
     int ret = 0;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -913,7 +912,7 @@ handle_releasedir(client_t c, const char *rawop, size_t opsize)
     char resultbuf[8];
     dirfh_t *dirfh = NULL;
     int ret = 0;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -960,7 +959,7 @@ handle_create(client_t c, const char *rawop, size_t opsize)
     int ret = 0;
     uint32_t val32 = 0;
     mode_t mode = 0;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -1002,7 +1001,7 @@ handle_fgetattr(client_t c, const char *rawop, size_t opsize)
     struct stat stbuf;
     size_t bodysize = 0;
     int ret = 0;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 
@@ -1040,7 +1039,7 @@ handle_utimens(client_t c, const char *rawop, size_t opsize)
     char resbuf[8];
     struct timespec tvnano[2];
     int ret = 0;
-    kfs_context_t_ context;
+    struct kfs_context context;
 
     KFS_ENTER();
 

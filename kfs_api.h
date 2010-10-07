@@ -18,16 +18,19 @@
  * Context of a call to an operation handler, including state of the brick as
  * initialised by init(). Every call to a KennyFS operation handler must be
  * accompanied by a context value. The context is valid for the entire duration
- * of the call, but not longer. I.e.: it can be passed down to subvolumes. The
- * However, part of the context is a void * private_data field. This is
- * per-subvolume data: it will be set to the return value of init() by the
- * caller and must be set to the respective subvolume's private data when
- * calling its operation handler.
+ * of the call, but not longer. I.e.: it can be passed down to subvolumes.
+ * However, the priv field (void *) is per-subvolume data: it will be set to the
+ * return value of init() by the caller and must be set to the respective
+ * subvolume's private data when calling its operation handler.
  * 
  * Also see the FUSE documentation.
  */
-typedef struct fuse_context * kfs_context_t;
-typedef struct fuse_context kfs_context_t_;
+struct kfs_context {
+    uid_t uid;
+    gid_t gid;
+    void *priv;
+};
+typedef struct kfs_context * kfs_context_t;
 
 /**
  * All filesystem operations that can be used by a brick to communicate with a
@@ -53,59 +56,53 @@ typedef struct fuse_context kfs_context_t_;
  * unnecessary if FUSE supported raising an error from the init() routine). 
  */
 struct kfs_operations {
-    int (*getattr) (const kfs_context_t, const char *, struct stat *);
-    int (*readlink) (const kfs_context_t, const char *, char *, size_t);
-    int (*mknod) (const kfs_context_t, const char *, mode_t, dev_t);
-    int (*mkdir) (const kfs_context_t, const char *, mode_t);
-    int (*unlink) (const kfs_context_t, const char *);
-    int (*rmdir) (const kfs_context_t, const char *);
-    int (*symlink) (const kfs_context_t, const char *, const char *);
-    int (*rename) (const kfs_context_t, const char *, const char *);
-    int (*link) (const kfs_context_t, const char *, const char *);
-    int (*chmod) (const kfs_context_t, const char *, mode_t);
-    int (*chown) (const kfs_context_t, const char *, uid_t, gid_t);
-    int (*truncate) (const kfs_context_t, const char *, off_t);
-    int (*open) (const kfs_context_t, const char *, struct fuse_file_info *);
-    int (*read) (const kfs_context_t, const char *, char *, size_t, off_t,
-             struct fuse_file_info *);
-    int (*write) (const kfs_context_t, const char *, const char *, size_t,
-            off_t, struct fuse_file_info *);
-    int (*statfs) (const kfs_context_t, const char *, struct statvfs *);
-    int (*flush) (const kfs_context_t, const char *, struct fuse_file_info *);
-    int (*release) (const kfs_context_t, const char *, struct fuse_file_info *);
-    int (*fsync) (const kfs_context_t, const char *, int, struct fuse_file_info
+    int (*getattr) (kfs_context_t, const char *, struct stat *);
+    int (*readlink) (kfs_context_t, const char *, char *, size_t);
+    int (*mknod) (kfs_context_t, const char *, mode_t, dev_t);
+    int (*mkdir) (kfs_context_t, const char *, mode_t);
+    int (*unlink) (kfs_context_t, const char *);
+    int (*rmdir) (kfs_context_t, const char *);
+    int (*symlink) (kfs_context_t, const char *, const char *);
+    int (*rename) (kfs_context_t, const char *, const char *);
+    int (*link) (kfs_context_t, const char *, const char *);
+    int (*chmod) (kfs_context_t, const char *, mode_t);
+    int (*chown) (kfs_context_t, const char *, uid_t, gid_t);
+    int (*truncate) (kfs_context_t, const char *, off_t);
+    int (*open) (kfs_context_t, const char *, struct fuse_file_info *);
+    int (*read) (kfs_context_t, const char *, char *, size_t, off_t, struct
+            fuse_file_info *);
+    int (*write) (kfs_context_t, const char *, const char *, size_t, off_t,
+            struct fuse_file_info *);
+    int (*statfs) (kfs_context_t, const char *, struct statvfs *);
+    int (*flush) (kfs_context_t, const char *, struct fuse_file_info *);
+    int (*release) (kfs_context_t, const char *, struct fuse_file_info *);
+    int (*fsync) (kfs_context_t, const char *, int, struct fuse_file_info *);
+    int (*setxattr) (kfs_context_t, const char *, const char *, const char *,
+            size_t, int);
+    int (*getxattr) (kfs_context_t, const char *, const char *, char *, size_t);
+    int (*listxattr) (kfs_context_t, const char *, char *, size_t);
+    int (*removexattr) (kfs_context_t, const char *, const char *);
+    int (*opendir) (kfs_context_t, const char *, struct fuse_file_info *);
+    int (*readdir) (kfs_context_t, const char *, void *, fuse_fill_dir_t, off_t,
+            struct fuse_file_info *);
+    int (*releasedir) (kfs_context_t, const char *, struct fuse_file_info *);
+    int (*fsyncdir) (kfs_context_t, const char *, int, struct fuse_file_info *);
+    int (*access) (kfs_context_t, const char *, int);
+    int (*create) (kfs_context_t, const char *, mode_t, struct fuse_file_info
             *);
-    int (*setxattr) (const kfs_context_t, const char *, const char *, const char
-            *, size_t, int);
-    int (*getxattr) (const kfs_context_t, const char *, const char *, char *,
-            size_t);
-    int (*listxattr) (const kfs_context_t, const char *, char *, size_t);
-    int (*removexattr) (const kfs_context_t, const char *, const char *);
-    int (*opendir) (const kfs_context_t, const char *, struct fuse_file_info *);
-    int (*readdir) (const kfs_context_t, const char *, void *, fuse_fill_dir_t,
-            off_t, struct fuse_file_info *);
-    int (*releasedir) (const kfs_context_t, const char *, struct fuse_file_info
+    int (*ftruncate) (kfs_context_t, const char *, off_t, struct fuse_file_info
             *);
-    int (*fsyncdir) (const kfs_context_t, const char *, int, struct
+    int (*fgetattr) (kfs_context_t, const char *, struct stat *, struct
             fuse_file_info *);
-    int (*access) (const kfs_context_t, const char *, int);
-    int (*create) (const kfs_context_t, const char *, mode_t, struct
-            fuse_file_info *);
-    int (*ftruncate) (const kfs_context_t, const char *, off_t, struct
-            fuse_file_info *);
-    int (*fgetattr) (const kfs_context_t, const char *, struct stat *, struct
-            fuse_file_info *);
-    int (*lock) (const kfs_context_t, const char *, struct fuse_file_info *, int
-            cmd, struct flock *);
-    int (*utimens) (const kfs_context_t, const char *, const struct timespec
-            tv[2]);
-    int (*bmap) (const kfs_context_t, const char *, size_t blocksize, uint64_t
-            *idx);
+    int (*lock) (kfs_context_t, const char *, struct fuse_file_info *, int cmd,
+            struct flock *);
+    int (*utimens) (kfs_context_t, const char *, const struct timespec tv[2]);
+    int (*bmap) (kfs_context_t, const char *, size_t blocksize, uint64_t *idx);
 #if FUSE_VERSION >= 28
-    int (*ioctl) (const kfs_context_t, const char *, int cmd, void *arg, struct
+    int (*ioctl) (kfs_context_t, const char *, int cmd, void *arg, struct
             fuse_file_info *, uint_t flags, void *data);
-    int (*poll) (const kfs_context_t, const char *, struct fuse_file_info *,
-            struct fuse_pollhandle *ph, uint_t *reventsp);
+    int (*poll) (kfs_context_t, const char *, struct fuse_file_info *, struct
+            fuse_pollhandle *ph, uint_t *reventsp);
 #endif
 };
 
@@ -128,9 +125,9 @@ struct kfs_subvolume {
  * to the handlers of this brick's subvolumes. The array is terminated by a NULL
  * pointer. On error, NULL is returned. On success, the (non-NULL) value is
  * stored by the caller and passed to every subsequent operation handler as the
- * "private_data" field of the context struct. If a brick does not need state it
- * may return a meaningless value to indicate success, as long as it is not
- * NULL, and it need never dereference it hereafter.
+ * "priv" field of the context struct. If a brick does not need state it may
+ * return a meaningless value to indicate success, as long as it is not NULL,
+ * and it need never dereference it hereafter.
  */
 typedef void * (* kfs_brick_init_f)(const char *conffile, const char *section,
         size_t num_subvolumes, const struct kfs_subvolume subvolumes[]);
