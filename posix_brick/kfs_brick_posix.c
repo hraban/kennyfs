@@ -837,7 +837,6 @@ posix_utimens(const kfs_context_t co, const char *fusepath, const struct
     if (ret == -1) {
         ret = -errno;
     }
-    KFS_DEBUG("utimens(\"%s\", ...) -> %d", fullpath, ret);
     fullpath = KFS_BUFSTRFREE(fullpath, pathbuf);
 
     KFS_RETURN(ret);
