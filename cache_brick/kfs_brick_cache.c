@@ -176,14 +176,31 @@ static int
 cache_truncate(const kfs_context_t co, const char *path, off_t offset)
 {
     struct kfs_subvolume * const subv = co->priv;
+    struct kfs_subvolume * const cache = subv + 1;
     int ret = 0;
 
     KFS_ENTER();
 
     co->priv = subv->private_data;
     ret = subv->oper->truncate(co, path, offset);
+    if (ret != 0) {
+        KFS_RETURN(ret);
+    }
+    co->priv = cache->private_data;
+    ret = cache->oper->truncate(co, path, offset);
+    if (ret != 0 && ret != -ENOENT) {
+        KFS_INFO("Error while truncating cached file: %s.", strerror(-ret));
+        /* Only one recourse to keep cache coherent: remove the cached file. */
+        co->priv = cache->private_data;
+        ret = cache->oper->unlink(co, path);
+        if (ret != 0) {
+            KFS_ERROR("Corrupt cache: file \"%s\" could not be removed: %s",
+                    path, strerror(-ret));
+        }
+    }
 
-    KFS_RETURN(ret);
+    /* Ignore the return value of the cache. */
+    KFS_RETURN(0);
 }
 
 static int
