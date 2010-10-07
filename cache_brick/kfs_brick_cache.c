@@ -26,10 +26,165 @@
 
 #define KFS_XNAME(suffix) (LOCAL_XATTR_NS "." suffix)
 
-/*
- * Declared (defined) above getattr() because it is used there (and I try to
- * avoid unnecessary declarations).
+/**
+ * Context needed by cache_readdir_filler() to communicate with cache_readdir().
  */
+struct readdir_context {
+    /** Original filler function. */
+    fuse_fill_dir_t filler;
+    /** Original buffer. */
+    void *buf;
+    /** Set to 1 if any failure occured while caching (ie do not trust cache) */
+    uint_t failure;
+    /** The source brick. */
+    struct kfs_subvolume *orig_brick;
+    /** The target (caching) brick. */
+    struct kfs_subvolume *cache_brick;
+    /** The context used by those bricks. */
+    kfs_context_t kfs_context;
+};
+
+enum fh_type {
+    FH_CACHE,
+    FH_ORIG,
+};
+
+/**
+ * Tuple of two file handles: one opened cached dir, one opened original dir.
+ */
+struct dirfh_switch {
+    uint64_t fh;
+    enum fh_type type;
+};
+
+/** All permission bits. */
+static const mode_t PERMISSION_BITS = S_IRWXU | S_IRWXG | S_IRWXO |
+                                      S_ISUID | S_ISGID | S_ISVTX;
+static const mode_t PERM0600 = S_IRUSR | S_IWUSR;
+static const mode_t PERM0700 = S_IRUSR | S_IWUSR | S_IXUSR;
+
+/**
+ * Create a node of given mode on the cache, optionally using orig to look up
+ * necessary data (symlink target). Properly handles different types of nodes
+ * (dir, symlink, regular, etc).
+ */
+static int
+versatile_mknod(struct kfs_subvolume *orig, struct kfs_subvolume *cache, const
+        kfs_context_t co, const char *path, mode_t mode)
+{
+    int ret = 0;
+    char *charbuf = NULL;
+    /**
+     * Make this dynamic (realloc as much as necessary) to prevent one length
+     * symlink target from causing havoc.
+     */
+    const size_t bufsize = 1000;
+
+    KFS_ENTER();
+
+    if (S_ISDIR(mode)) {
+        KFS_DO_OPER(ret = , cache, mkdir, co, path, mode);
+    } else if (S_ISLNK(mode)) {
+        /* cache_readlink will cache the symlink. */
+        charbuf = KFS_MALLOC(bufsize);
+        if (charbuf == NULL) {
+            KFS_RETURN(-1);
+        }
+        /**
+         * Do not cache incomplete results. Thanks to the API the only way to be
+         * sure that the result was not truncated is check whether the buffer
+         * was filled entirely; O(n).
+         */
+        KFS_DO_OPER(ret = , orig, readlink, co, path, charbuf, bufsize);
+        if (ret != 0 || strlen(charbuf) == bufsize - 1) {
+            charbuf = KFS_FREE(charbuf);
+            KFS_RETURN(-1);
+        }
+        /* Store symlink target. */
+        KFS_DO_OPER(ret = , cache, symlink, co, charbuf, path);
+        charbuf = KFS_FREE(charbuf);
+    } else {
+        KFS_DO_OPER(ret = , cache, mknod, co, path, mode, 0);
+    }
+
+    KFS_RETURN(ret);
+}
+
+/**
+ * Caches the result in extended attributes of the cache copy.
+ *
+ * This is to prevent opening the can of worms that is manual setattr() on files
+ * on different filesystems, if that is even possible at all.
+ *
+ * As per the POSIX spec (TODO: is that really in the spec? I got it from man
+ * 3posix stat) (at least) the following members are cached:
+ *
+ * - st_mode
+ * - st_ino
+ * - st_dev
+ * - st_uid
+ * - st_gid
+ * - st_atime
+ * - st_ctime
+ * - st_mtime
+ * - st_nlink
+ */
+static int
+cache_getattr(const kfs_context_t co, const char *path, struct stat *stbuf)
+{
+    uint32_t intbuf[13];
+    const size_t buflen = sizeof(intbuf);
+    char charbuf[buflen];
+    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_subvolume * const cache = subv + 1;
+    int ret = 0;
+    mode_t mode = 0;
+
+    KFS_ENTER();
+
+    /* Check if data is already cached. */
+    KFS_DO_OPER(ret = , cache, getxattr, co, path, KFS_XNAME("stat"), charbuf,
+            buflen);
+    if (ret == buflen) {
+        /* Success: the file metadata is cached. */
+        memcpy(intbuf, charbuf, buflen);
+        stbuf = unserialise_stat(stbuf, intbuf);
+        KFS_RETURN(0);
+    }
+    /* There is no cached data of expected size. */
+    KFS_DO_OPER(ret = , subv, getattr, co, path, stbuf);
+    if (ret != 0) {
+        KFS_RETURN(ret);
+    }
+    /* But the file exists! Cache the metadata. */
+    serialise_stat(intbuf, stbuf);
+    memcpy(charbuf, intbuf, buflen);
+    KFS_DO_OPER(ret = , cache, setxattr, co, path, KFS_XNAME("stat"), charbuf,
+            buflen, 0);
+    switch (ret) {
+    case 0:
+        break;
+    case -ENOTSUP:
+        /* TODO: Disable all xattr operations from now on? */
+        KFS_INFO("Caching enabled but extended attributes not supported.");
+        break;
+    case -ENOENT:
+        /* The file does not exist. Create it and wait for next getattr call. */
+        mode = (stbuf->st_mode & S_IFMT) | S_IRWXU;
+        ret = versatile_mknod(subv, cache, co, path, mode);
+        if (ret != 0) {
+            KFS_INFO("Error while caching metadata.");
+        }
+        break;
+    default:
+        KFS_INFO("Error while caching metadata: %s.", strerror(-ret));
+        break;
+    }
+
+    /* Ignore return value of cache. */
+    KFS_RETURN(0);
+}
+
 static int
 cache_readlink(const kfs_context_t co, const char *path, char *buf, size_t
         size)
@@ -72,93 +227,6 @@ cache_readlink(const kfs_context_t co, const char *path, char *buf, size_t
     KFS_RETURN(0);
 }
 
-/**
- * Caches the result in extended attributes of the cache copy.
- *
- * This is to prevent opening the can of worms that is manual setattr() on files
- * on different filesystems, if that is even possible at all.
- *
- * As per the POSIX spec (TODO: is that really in the spec? I got it from man
- * 3posix stat) (at least) the following members are cached:
- *
- * - st_mode
- * - st_ino
- * - st_dev
- * - st_uid
- * - st_gid
- * - st_atime
- * - st_ctime
- * - st_mtime
- * - st_nlink
- */
-static int
-cache_getattr(const kfs_context_t co, const char *path, struct stat *stbuf)
-{
-    uint32_t intbuf[13];
-    char charbuf[MAX(PATHBUF_SIZE, sizeof(intbuf))];
-    struct kfs_subvolume * const subv = co->priv;
-    struct kfs_subvolume * const cache = subv + 1;
-    const char *debug_info = NULL;
-    int ret = 0;
-    mode_t mode = 0;
-
-    KFS_ENTER();
-
-    KFS_ASSERT(sizeof(charbuf) >= sizeof(intbuf));
-    /* Check if data is already cached. */
-    KFS_DO_OPER(ret = , cache, getxattr, co, path, KFS_XNAME("stat"), charbuf,
-            sizeof(intbuf));
-    if (ret == sizeof(intbuf)) {
-        /* Success: the file metadata is cached. */
-        memcpy(intbuf, charbuf, sizeof(intbuf));
-        stbuf = unserialise_stat(stbuf, intbuf);
-        KFS_RETURN(0);
-    }
-    /* There is no cached data of expected size. */
-    KFS_DO_OPER(ret = , subv, getattr, co, path, stbuf);
-    if (ret != 0) {
-        KFS_RETURN(ret);
-    }
-    /* But the file exists! Cache the metadata. */
-    serialise_stat(intbuf, stbuf);
-    memcpy(charbuf, intbuf, sizeof(intbuf));
-    KFS_DO_OPER(ret = , cache, setxattr, co, path, KFS_XNAME("stat"), charbuf,
-            sizeof(intbuf), 0);
-    debug_info = "";
-    switch (ret) {
-    case 0:
-        break;
-    case -ENOTSUP:
-        /* TODO: Disable all xattr operations from now on? */
-        KFS_INFO("Caching enabled but extended attributes not supported.");
-        break;
-    case -ENOENT:
-        /* The file does not exist. Create it and wait for next getattr call. */
-        mode = (stbuf->st_mode & S_IFMT) | S_IRWXU;
-        if (S_ISDIR(mode)) {
-            debug_info = " of directory";
-            KFS_DO_OPER(ret = , cache, mkdir, co, path, mode);
-        } else if (S_ISLNK(mode)) {
-            /* cache_readlink will cache the symlink. */
-            debug_info = " of symlink";
-            co->priv = subv;
-            cache_readlink(co, path, charbuf, sizeof(charbuf));
-        } else {
-            KFS_DO_OPER(ret = , cache, mknod, co, path, mode, 0);
-        }
-        if (ret == 0) {
-            break;
-        }
-    default:
-        KFS_INFO("Error while caching metadata%s: %s.", debug_info,
-                strerror(-ret));
-        break;
-    }
-
-    /* Ignore return value of cache. */
-    KFS_RETURN(0);
-}
-
 static int
 cache_mknod(const kfs_context_t co, const char *path, mode_t mode, dev_t dev)
 {
@@ -172,7 +240,7 @@ cache_mknod(const kfs_context_t co, const char *path, mode_t mode, dev_t dev)
     if (ret != 0) {
         KFS_RETURN(ret);
     }
-    KFS_DO_OPER(ret = , cache, mknod, co, path, mode, dev);
+    KFS_DO_OPER(ret = , cache, mknod, co, path, PERM0600, dev);
     if (ret != 0) {
         KFS_INFO("Error while caching new node: %s.", strerror(-ret));
     }
@@ -557,13 +625,21 @@ static int
 cache_mkdir(const kfs_context_t co, const char *path, mode_t mode)
 {
     struct kfs_subvolume * const subv = co->priv;
+    struct kfs_subvolume * const cache = subv + 1;
     int ret = 0;
 
     KFS_ENTER();
 
     KFS_DO_OPER(ret = , subv, mkdir, co, path, mode);
+    if (ret != 0) {
+        KFS_RETURN(ret);
+    }
+    KFS_DO_OPER(ret = , cache, mkdir, co, path, PERM0700);
+    if (ret != 0) {
+        KFS_INFO("Error while caching new dir: %s.", strerror(-ret));
+    }
 
-    KFS_RETURN(ret);
+    KFS_RETURN(0);
 }
 
 static int
@@ -571,28 +647,117 @@ cache_opendir(const kfs_context_t co, const char *path, struct fuse_file_info
         *fi)
 {
     struct kfs_subvolume * const subv = co->priv;
+    struct kfs_subvolume * const cache = subv + 1;
+    struct dirfh_switch *fh = NULL;
+    char c = '\0';
     int ret = 0;
 
     KFS_ENTER();
 
-    KFS_DO_OPER(ret = , subv, opendir, co, path, fi);
+    fh = KFS_MALLOC(sizeof(*fh));
+    if (fh == NULL) {
+        KFS_RETURN(-ENOMEM);
+    }
+    KFS_DO_OPER(ret = , cache, getxattr, co, path, KFS_XNAME("readdir"), &c, 1);
+    if (ret == 0 && c == '\0') {
+        /** The whole dir is already cached, no need to open the source. */
+        KFS_DO_OPER(ret = , cache, opendir, co, path, fi);
+        if (ret == 0) {
+            fh->type = FH_CACHE;
+            fh->fh = fi->fh;
+        } else {
+            KFS_INFO("Error while opening cached dir: %s", strerror(-ret));
+        }
+    }
+    if (ret != 0) {
+        KFS_DO_OPER(ret = , subv, opendir, co, path, fi);
+        if (ret == 0) {
+            fh->type = FH_ORIG;
+            fh->fh = fi->fh;
+        }
+    }
+    memcpy(&fi->fh, &fh, sizeof(fh));
 
     KFS_RETURN(ret);
 }
 
 /**
- * List directory contents.
+ * Wrapper around the caller's readdir callback (the "filler" function). It
+ * passes all operations through and sets a flag if the filler indicates that
+ * its buffer is full, so that the readdir() operation handler knows about it.
+ */
+static int
+cache_readdir_filler(void *buf, const char *name, const struct stat *stbuf,
+        off_t offset)
+{
+    struct readdir_context * const rd_co = buf;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    ret = rd_co->filler(rd_co->buf, name, stbuf, offset);
+    if (ret == 0) {
+        ret = versatile_mknod(rd_co->orig_brick, rd_co->cache_brick,
+                rd_co->kfs_context, name, (stbuf->st_mode & S_IFMT) | S_IRWXU);
+        if (ret == -1) {
+            rd_co->failure = 1;
+        }
+    } else {
+        /* Buffer is full. */
+        rd_co->failure = 1;
+    }
+
+    KFS_RETURN(ret);
+}
+
+/**
+ * List directory contents. If this directory has the extended attribute
+ * "readdir" (in this namespace), with no contents, the cached directory is read
+ * instead. Otherwise (if there is no such attribute or if it has any contents),
+ * the source directory is read, the cached directory is updated and the
+ * "readdir" attribute is set to an empty string.
+ * 
+ * TODO: There is still room for a subtle bug: if this function is called
+ * "asynchronously" (i.e.: multiple times, but not with incrementing offsets),
+ * it might reach the end of the directory before having all the contents. It
+ * will not recognise this situation and (for this and every following call)
+ * consider the directory entries properly cached, meaning some entries will not
+ * be visible to the caller.
  */
 static int
 cache_readdir(const kfs_context_t co, const char *path, void *buf,
         fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
 {
     struct kfs_subvolume * const subv = co->priv;
+    struct kfs_subvolume * const cache = subv + 1;
+    struct readdir_context rd_context;
+    struct dirfh_switch *fh = NULL;
     int ret = 0;
 
     KFS_ENTER();
 
-    KFS_DO_OPER(ret = , subv, readdir, co, path, buf, filler, offset, fi);
+    memcpy(&fh, &fi->fh, sizeof(fh));
+    fi->fh = fh->fh;
+    KFS_ASSERT(fh != NULL);
+    if (fh->type == FH_CACHE) {
+        /* Read from cache. */
+        KFS_DO_OPER(ret = , cache, readdir, co, path, buf, filler, offset, fi);
+        KFS_RETURN(ret);
+    }
+    KFS_ASSERT(fh->type == FH_ORIG);
+    rd_context.filler = filler;
+    rd_context.buf = buf;
+    rd_context.failure = 0;
+    rd_context.orig_brick = subv;
+    rd_context.cache_brick = cache;
+    rd_context.kfs_context = co;
+    KFS_DO_OPER(ret = , subv, readdir, co, path, &rd_context,
+            cache_readdir_filler, offset, fi);
+    if (ret == 0 && rd_context.failure == 0) {
+        /* All entries were properly processed. */
+        KFS_DO_OPER(/**/, cache, setxattr, co, path, KFS_XNAME("readdir"), "",
+                0, 0);
+    }
 
     KFS_RETURN(ret);
 }
@@ -601,11 +766,22 @@ static int
 cache_releasedir(const kfs_context_t co, const char *path, struct fuse_file_info *fi)
 {
     struct kfs_subvolume * const subv = co->priv;
+    struct kfs_subvolume * const cache = subv + 1;
+    struct dirfh_switch *fh = NULL;
     int ret = 0;
 
     KFS_ENTER();
 
-    KFS_DO_OPER(ret = , subv, releasedir, co, path, fi);
+    memcpy(&fh, &fi->fh, sizeof(fh));
+    fi->fh = fh->fh;
+    KFS_ASSERT(fh != NULL);
+    if (fh->type == FH_CACHE) {
+        KFS_DO_OPER(ret = , cache, releasedir, co, path, fi);
+    } else {
+        KFS_ASSERT(fh->type == FH_ORIG);
+        KFS_DO_OPER(ret = , subv, releasedir, co, path, fi);
+    }
+    fh = KFS_FREE(fh);
 
     KFS_RETURN(ret);
 }

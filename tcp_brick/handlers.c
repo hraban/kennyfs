@@ -78,6 +78,13 @@ do_operation_wrapper(enum fuse_op_id id, char *operbuf, size_t operbufsize,
     arg.operbufsize = operbufsize;
     arg.resbuf = resbuf;
     arg.resbufsize = resbufsize;
+    /*
+     * TODO: This seems to hang if a process that had an open file is
+     * interrupted. E.g.: find > /dev/null... Ctrl-C. This would mean that,
+     * somehow, the thread working on this is cut-off before it can return to
+     * release the lock---a matter I find highly dubious. I have no idea how to
+     * fix this.
+     */
     ret = pthread_mutex_lock(&do_operation_mutex); KFS_ASSERT(ret == 0);
     ret = do_operation(&arg);
     tmp = ret;
