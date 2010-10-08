@@ -37,9 +37,9 @@ struct readdir_context {
     /** Set to 1 if any failure occured while caching (ie do not trust cache) */
     uint_t failure;
     /** The source brick. */
-    struct kfs_subvolume *orig_brick;
+    struct kfs_brick *orig_brick;
     /** The target (caching) brick. */
-    struct kfs_subvolume *cache_brick;
+    struct kfs_brick *cache_brick;
     /** The context used by those bricks. */
     kfs_context_t kfs_context;
 };
@@ -69,14 +69,14 @@ static const mode_t PERM0700 = S_IRUSR | S_IWUSR | S_IXUSR;
  * (dir, symlink, regular, etc).
  */
 static int
-versatile_mknod(struct kfs_subvolume *orig, struct kfs_subvolume *cache, const
+versatile_mknod(struct kfs_brick *orig, struct kfs_brick *cache, const
         kfs_context_t co, const char *path, mode_t mode)
 {
     int ret = 0;
     char *charbuf = NULL;
     /**
-     * Make this dynamic (realloc as much as necessary) to prevent one length
-     * symlink target from causing havoc.
+     * TODO: Make this dynamic (realloc as much as necessary) to prevent one
+     * length symlink target from causing havoc.
      */
     const size_t bufsize = 1000;
 
@@ -135,8 +135,8 @@ cache_getattr(const kfs_context_t co, const char *path, struct stat *stbuf)
     uint32_t intbuf[13];
     const size_t buflen = sizeof(intbuf);
     char charbuf[buflen];
-    struct kfs_subvolume * const subv = co->priv;
-    struct kfs_subvolume * const cache = subv + 1;
+    struct kfs_brick * const subv = co->priv;
+    struct kfs_brick * const cache = subv + 1;
     int ret = 0;
     mode_t mode = 0;
 
@@ -189,8 +189,8 @@ static int
 cache_readlink(const kfs_context_t co, const char *path, char *buf, size_t
         size)
 {
-    struct kfs_subvolume * const subv = co->priv;
-    struct kfs_subvolume * const cache = subv + 1;
+    struct kfs_brick * const subv = co->priv;
+    struct kfs_brick * const cache = subv + 1;
     int ret = 0;
 
     KFS_ENTER();
@@ -230,8 +230,8 @@ cache_readlink(const kfs_context_t co, const char *path, char *buf, size_t
 static int
 cache_mknod(const kfs_context_t co, const char *path, mode_t mode, dev_t dev)
 {
-    struct kfs_subvolume * const subv = co->priv;
-    struct kfs_subvolume * const cache = subv + 1;
+    struct kfs_brick * const subv = co->priv;
+    struct kfs_brick * const cache = subv + 1;
     int ret = 0;
 
     KFS_ENTER();
@@ -252,8 +252,8 @@ cache_mknod(const kfs_context_t co, const char *path, mode_t mode, dev_t dev)
 static int
 cache_truncate(const kfs_context_t co, const char *path, off_t offset)
 {
-    struct kfs_subvolume * const subv = co->priv;
-    struct kfs_subvolume * const cache = subv + 1;
+    struct kfs_brick * const subv = co->priv;
+    struct kfs_brick * const cache = subv + 1;
     int ret = 0;
 
     KFS_ENTER();
@@ -280,7 +280,7 @@ cache_truncate(const kfs_context_t co, const char *path, off_t offset)
 static int
 cache_open(const kfs_context_t co, const char *path, struct fuse_file_info *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -293,8 +293,8 @@ cache_open(const kfs_context_t co, const char *path, struct fuse_file_info *fi)
 static int
 cache_unlink(const kfs_context_t co, const char *path)
 {
-    struct kfs_subvolume * const subv = co->priv;
-    struct kfs_subvolume * const cache = subv + 1;
+    struct kfs_brick * const subv = co->priv;
+    struct kfs_brick * const cache = subv + 1;
     int ret = 0;
 
     KFS_ENTER();
@@ -315,8 +315,8 @@ cache_unlink(const kfs_context_t co, const char *path)
 static int
 cache_rmdir(const kfs_context_t co, const char *path)
 {
-    struct kfs_subvolume * const subv = co->priv;
-    struct kfs_subvolume * const cache = subv + 1;
+    struct kfs_brick * const subv = co->priv;
+    struct kfs_brick * const cache = subv + 1;
     int ret = 0;
 
     KFS_ENTER();
@@ -337,8 +337,8 @@ cache_rmdir(const kfs_context_t co, const char *path)
 static int
 cache_symlink(const kfs_context_t co, const char *path1, const char *path2)
 {
-    struct kfs_subvolume * const subv = co->priv;
-    struct kfs_subvolume * const cache = subv + 1;
+    struct kfs_brick * const subv = co->priv;
+    struct kfs_brick * const cache = subv + 1;
     int ret = 0;
 
     KFS_ENTER();
@@ -358,8 +358,8 @@ cache_symlink(const kfs_context_t co, const char *path1, const char *path2)
 static int
 cache_rename(const kfs_context_t co, const char *from, const char *to)
 {
-    struct kfs_subvolume * const subv = co->priv;
-    struct kfs_subvolume * const cache = subv + 1;
+    struct kfs_brick * const subv = co->priv;
+    struct kfs_brick * const cache = subv + 1;
     int ret = 0;
 
     KFS_ENTER();
@@ -379,8 +379,8 @@ cache_rename(const kfs_context_t co, const char *from, const char *to)
 static int
 cache_link(const kfs_context_t co, const char *from, const char *to)
 {
-    struct kfs_subvolume * const subv = co->priv;
-    struct kfs_subvolume * const cache = subv + 1;
+    struct kfs_brick * const subv = co->priv;
+    struct kfs_brick * const cache = subv + 1;
     int ret = 0;
 
     KFS_ENTER();
@@ -400,8 +400,8 @@ cache_link(const kfs_context_t co, const char *from, const char *to)
 static int
 cache_chmod(const kfs_context_t co, const char *path, mode_t mode)
 {
-    struct kfs_subvolume * const subv = co->priv;
-    struct kfs_subvolume * const cache = subv + 1;
+    struct kfs_brick * const subv = co->priv;
+    struct kfs_brick * const cache = subv + 1;
     uint32_t intbuf[13];
     const size_t buflen = sizeof(intbuf);
     char charbuf[buflen];
@@ -438,8 +438,8 @@ cache_chmod(const kfs_context_t co, const char *path, mode_t mode)
 static int
 cache_chown(const kfs_context_t co, const char *path, uid_t uid, gid_t gid)
 {
-    struct kfs_subvolume * const subv = co->priv;
-    struct kfs_subvolume * const cache = subv + 1;
+    struct kfs_brick * const subv = co->priv;
+    struct kfs_brick * const cache = subv + 1;
     uint32_t intbuf[13];
     const size_t buflen = sizeof(intbuf);
     char charbuf[buflen];
@@ -478,7 +478,7 @@ static int
 cache_read(const kfs_context_t co, const char *path, char *buf, size_t size,
         off_t offset, struct fuse_file_info *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -492,7 +492,7 @@ static int
 cache_write(const kfs_context_t co, const char *path, const char *buf, size_t
         size, off_t offset, struct fuse_file_info *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -505,7 +505,7 @@ cache_write(const kfs_context_t co, const char *path, const char *buf, size_t
 static int
 cache_statfs(const kfs_context_t co, const char *path, struct statvfs *stbuf)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -519,7 +519,7 @@ static int
 cache_flush(const kfs_context_t co, const char *path, struct fuse_file_info
         *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -533,7 +533,7 @@ static int
 cache_release(const kfs_context_t co, const char *path, struct fuse_file_info
         *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -547,7 +547,7 @@ static int
 cache_fsync(const kfs_context_t co, const char *path, int isdatasync, struct
         fuse_file_info *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -566,7 +566,7 @@ static int
 cache_setxattr(const kfs_context_t co, const char *path, const char *name,
         const char *value, size_t size, int flags)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -580,7 +580,7 @@ static int
 cache_getxattr(const kfs_context_t co, const char *path, const char *name, char
         *value, size_t size)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -594,7 +594,7 @@ static int
 cache_listxattr(const kfs_context_t co, const char *path, char *list, size_t
         size)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -607,7 +607,7 @@ cache_listxattr(const kfs_context_t co, const char *path, char *list, size_t
 static int
 cache_removexattr(const kfs_context_t co, const char *path, const char *name)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -624,8 +624,8 @@ cache_removexattr(const kfs_context_t co, const char *path, const char *name)
 static int
 cache_mkdir(const kfs_context_t co, const char *path, mode_t mode)
 {
-    struct kfs_subvolume * const subv = co->priv;
-    struct kfs_subvolume * const cache = subv + 1;
+    struct kfs_brick * const subv = co->priv;
+    struct kfs_brick * const cache = subv + 1;
     int ret = 0;
 
     KFS_ENTER();
@@ -646,8 +646,8 @@ static int
 cache_opendir(const kfs_context_t co, const char *path, struct fuse_file_info
         *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
-    struct kfs_subvolume * const cache = subv + 1;
+    struct kfs_brick * const subv = co->priv;
+    struct kfs_brick * const cache = subv + 1;
     struct dirfh_switch *fh = NULL;
     char c = '\0';
     int ret = 0;
@@ -728,8 +728,8 @@ static int
 cache_readdir(const kfs_context_t co, const char *path, void *buf,
         fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
-    struct kfs_subvolume * const cache = subv + 1;
+    struct kfs_brick * const subv = co->priv;
+    struct kfs_brick * const cache = subv + 1;
     struct readdir_context rd_context;
     struct dirfh_switch *fh = NULL;
     int ret = 0;
@@ -765,8 +765,8 @@ cache_readdir(const kfs_context_t co, const char *path, void *buf,
 static int
 cache_releasedir(const kfs_context_t co, const char *path, struct fuse_file_info *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
-    struct kfs_subvolume * const cache = subv + 1;
+    struct kfs_brick * const subv = co->priv;
+    struct kfs_brick * const cache = subv + 1;
     struct dirfh_switch *fh = NULL;
     int ret = 0;
 
@@ -790,7 +790,7 @@ static int
 cache_fsyncdir(const kfs_context_t co, const char *path, int isdatasync, struct
         fuse_file_info *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -803,7 +803,7 @@ cache_fsyncdir(const kfs_context_t co, const char *path, int isdatasync, struct
 static int
 cache_access(const kfs_context_t co, const char *path, int mask)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -817,8 +817,8 @@ static int
 cache_create(const kfs_context_t co, const char *path, mode_t mode, struct
         fuse_file_info *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
-    struct kfs_subvolume * const cache = subv + 1;
+    struct kfs_brick * const subv = co->priv;
+    struct kfs_brick * const cache = subv + 1;
     int ret = 0;
 
     KFS_ENTER();
@@ -840,7 +840,7 @@ static int
 cache_ftruncate(const kfs_context_t co, const char *path, off_t size, struct
         fuse_file_info *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -854,7 +854,7 @@ static int
 cache_fgetattr(const kfs_context_t co, const char *path, struct stat *stbuf,
         struct fuse_file_info *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -868,7 +868,7 @@ static int
 cache_lock(const kfs_context_t co, const char *path, struct fuse_file_info *fi,
         int cmd, struct flock *lock)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -882,8 +882,8 @@ static int
 cache_utimens(const kfs_context_t co, const char *path, const struct timespec
         tvnano[2])
 {
-    struct kfs_subvolume * const subv = co->priv;
-    struct kfs_subvolume * const cache = subv + 1;
+    struct kfs_brick * const subv = co->priv;
+    struct kfs_brick * const cache = subv + 1;
     uint32_t intbuf[13];
     const size_t buflen = sizeof(intbuf);
     char charbuf[buflen];
@@ -922,7 +922,7 @@ static int
 cache_bmap(const kfs_context_t co, const char *path, size_t blocksize, uint64_t
         *idx)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -937,7 +937,7 @@ static int
 cache_ioctl(const kfs_context_t co, const char *path, int cmd, void *arg,
         struct fuse_file_info *fi, uint_t flags, void *data)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -953,7 +953,7 @@ static int
 cache_poll(const kfs_context_t co, const char *path, struct fuse_file_info *fi,
         struct fuse_pollhandle *ph, uint_t *reventsp)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -1011,12 +1011,12 @@ static const struct kfs_operations handlers = {
  */
 static void *
 kfs_cache_init(const char *conffile, const char *section, size_t num_subvolumes,
-        const struct kfs_subvolume subvolumes[])
+        const struct kfs_brick subvolumes[])
 {
     (void) conffile;
     (void) section;
 
-    struct kfs_subvolume *subvols_cpy = NULL;
+    struct kfs_brick *subvols_cpy = NULL;
 
     KFS_ENTER();
 

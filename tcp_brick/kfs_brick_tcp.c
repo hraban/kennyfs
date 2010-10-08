@@ -29,7 +29,7 @@ char port[8] = {'\0'};
  */
 static void *
 kenny_init(const char *conffile, const char *section, size_t num_subvolumes,
-        const struct kfs_subvolume subvolumes[])
+        const struct kfs_brick subvolumes[])
 {
     (void) subvolumes;
 

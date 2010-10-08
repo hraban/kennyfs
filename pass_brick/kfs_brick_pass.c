@@ -22,7 +22,7 @@
 static int
 pass_getattr(const kfs_context_t co, const char *path, struct stat *stbuf)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -36,7 +36,7 @@ static int
 pass_readlink(const kfs_context_t co, const char *path, char *buf, size_t
         size)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -49,7 +49,7 @@ pass_readlink(const kfs_context_t co, const char *path, char *buf, size_t
 static int
 pass_mknod(const kfs_context_t co, const char *path, mode_t mode, dev_t dev)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -62,7 +62,7 @@ pass_mknod(const kfs_context_t co, const char *path, mode_t mode, dev_t dev)
 static int
 pass_truncate(const kfs_context_t co, const char *path, off_t offset)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -75,7 +75,7 @@ pass_truncate(const kfs_context_t co, const char *path, off_t offset)
 static int
 pass_open(const kfs_context_t co, const char *path, struct fuse_file_info *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -88,7 +88,7 @@ pass_open(const kfs_context_t co, const char *path, struct fuse_file_info *fi)
 static int
 pass_unlink(const kfs_context_t co, const char *path)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -101,7 +101,7 @@ pass_unlink(const kfs_context_t co, const char *path)
 static int
 pass_rmdir(const kfs_context_t co, const char *path)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -117,7 +117,7 @@ pass_rmdir(const kfs_context_t co, const char *path)
 static int
 pass_symlink(const kfs_context_t co, const char *path1, const char *path2)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -130,7 +130,7 @@ pass_symlink(const kfs_context_t co, const char *path1, const char *path2)
 static int
 pass_rename(const kfs_context_t co, const char *from, const char *to)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -143,7 +143,7 @@ pass_rename(const kfs_context_t co, const char *from, const char *to)
 static int
 pass_link(const kfs_context_t co, const char *from, const char *to)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -156,7 +156,7 @@ pass_link(const kfs_context_t co, const char *from, const char *to)
 static int
 pass_chmod(const kfs_context_t co, const char *path, mode_t mode)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -169,7 +169,7 @@ pass_chmod(const kfs_context_t co, const char *path, mode_t mode)
 static int
 pass_chown(const kfs_context_t co, const char *path, uid_t uid, gid_t gid)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -183,7 +183,7 @@ static int
 pass_read(const kfs_context_t co, const char *path, char *buf, size_t size,
         off_t offset, struct fuse_file_info *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -197,7 +197,7 @@ static int
 pass_write(const kfs_context_t co, const char *path, const char *buf, size_t
         size, off_t offset, struct fuse_file_info *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -210,7 +210,7 @@ pass_write(const kfs_context_t co, const char *path, const char *buf, size_t
 static int
 pass_statfs(const kfs_context_t co, const char *path, struct statvfs *stbuf)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -224,7 +224,7 @@ static int
 pass_flush(const kfs_context_t co, const char *path, struct fuse_file_info
         *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -238,7 +238,7 @@ static int
 pass_release(const kfs_context_t co, const char *path, struct fuse_file_info
         *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -252,7 +252,7 @@ static int
 pass_fsync(const kfs_context_t co, const char *path, int isdatasync, struct
         fuse_file_info *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -271,7 +271,7 @@ static int
 pass_setxattr(const kfs_context_t co, const char *path, const char *name,
         const char *value, size_t size, int flags)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -285,7 +285,7 @@ static int
 pass_getxattr(const kfs_context_t co, const char *path, const char *name, char
         *value, size_t size)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -299,7 +299,7 @@ static int
 pass_listxattr(const kfs_context_t co, const char *path, char *list, size_t
         size)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -312,7 +312,7 @@ pass_listxattr(const kfs_context_t co, const char *path, char *list, size_t
 static int
 pass_removexattr(const kfs_context_t co, const char *path, const char *name)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -329,7 +329,7 @@ pass_removexattr(const kfs_context_t co, const char *path, const char *name)
 static int
 pass_mkdir(const kfs_context_t co, const char *path, mode_t mode)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -343,7 +343,7 @@ static int
 pass_opendir(const kfs_context_t co, const char *path, struct fuse_file_info
         *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -360,7 +360,7 @@ static int
 pass_readdir(const kfs_context_t co, const char *path, void *buf,
         fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -373,7 +373,7 @@ pass_readdir(const kfs_context_t co, const char *path, void *buf,
 static int
 pass_releasedir(const kfs_context_t co, const char *path, struct fuse_file_info *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -387,7 +387,7 @@ static int
 pass_fsyncdir(const kfs_context_t co, const char *path, int isdatasync, struct
         fuse_file_info *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -400,7 +400,7 @@ pass_fsyncdir(const kfs_context_t co, const char *path, int isdatasync, struct
 static int
 pass_access(const kfs_context_t co, const char *path, int mask)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -414,7 +414,7 @@ static int
 pass_create(const kfs_context_t co, const char *path, mode_t mode, struct
         fuse_file_info *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -428,7 +428,7 @@ static int
 pass_ftruncate(const kfs_context_t co, const char *path, off_t size, struct
         fuse_file_info *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -442,7 +442,7 @@ static int
 pass_fgetattr(const kfs_context_t co, const char *path, struct stat *stbuf,
         struct fuse_file_info *fi)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -456,7 +456,7 @@ static int
 pass_lock(const kfs_context_t co, const char *path, struct fuse_file_info *fi,
         int cmd, struct flock *lock)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -470,7 +470,7 @@ static int
 pass_utimens(const kfs_context_t co, const char *path, const struct timespec
         tvnano[2])
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -484,7 +484,7 @@ static int
 pass_bmap(const kfs_context_t co, const char *path, size_t blocksize, uint64_t
         *idx)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -499,7 +499,7 @@ static int
 pass_ioctl(const kfs_context_t co, const char *path, int cmd, void *arg,
         struct fuse_file_info *fi, uint_t flags, void *data)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -515,7 +515,7 @@ static int
 pass_poll(const kfs_context_t co, const char *path, struct fuse_file_info *fi,
         struct fuse_pollhandle *ph, uint_t *reventsp)
 {
-    struct kfs_subvolume * const subv = co->priv;
+    struct kfs_brick * const subv = co->priv;
     int ret = 0;
 
     KFS_ENTER();
@@ -572,12 +572,12 @@ static const struct kfs_operations handlers = {
  */
 static void *
 kfs_pass_init(const char *conffile, const char *section, size_t num_subvolumes,
-        const struct kfs_subvolume subvolumes[])
+        const struct kfs_brick subvolumes[])
 {
     (void) conffile;
     (void) section;
 
-    struct kfs_subvolume *subv_copy = NULL;
+    struct kfs_brick *subv_copy = NULL;
 
     KFS_ENTER();
 

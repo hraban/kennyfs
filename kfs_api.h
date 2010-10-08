@@ -106,15 +106,10 @@ struct kfs_operations {
 #endif
 };
 
-/**
- * A subvolume is a brick that is used by another brick as part of its
- * operations. A subvolume is, technically, a brick, but in the context of being
- * used by another brick it only concerns the API between those two: the
- * operation handlers and the private data of the context of the subvolume.
- */
-struct kfs_subvolume {
+struct kfs_brick {
     const struct kfs_operations *oper;
     void *private_data;
+    char *name;
 };
 
 /**
@@ -130,7 +125,7 @@ struct kfs_subvolume {
  * and it need never dereference it hereafter.
  */
 typedef void * (* kfs_brick_init_f)(const char *conffile, const char *section,
-        size_t num_subvolumes, const struct kfs_subvolume subvolumes[]);
+        size_t num_subvolumes, const struct kfs_brick subvolumes[]);
 /** Function to obtain pointer to operation callback handlers for this brick. */
 typedef const struct kfs_operations * (* kfs_brick_getfuncs_f)(void);
 /**

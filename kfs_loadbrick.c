@@ -32,7 +32,7 @@
 /** Private data for resource tracking. */
 struct kfs_loadbrick_priv {
     /** For every subvolume: an API struct. */
-    struct kfs_subvolume subvolumes[MAX_SUBVOLUMES];
+    struct kfs_brick subvolumes[MAX_SUBVOLUMES];
     /** Array of pointers to subvolumes-nodes. */
     struct kfs_loadbrick_priv *child_nodes[MAX_SUBVOLUMES];
     const struct kfs_brick_api *brick_api;
@@ -91,6 +91,7 @@ del_any_brick(struct kfs_loadbrick_priv *priv)
     KFS_ENTER();
 
     for (i = 0; i < priv->num_subvolumes; i++) {
+        priv->subvolumes[i].name = KFS_FREE(priv->subvolumes[i].name);
         private_data = priv->subvolumes[i].private_data;
         priv->child_nodes[i]->brick_api->halt(private_data);
         priv->child_nodes[i] = del_any_brick(priv->child_nodes[i]);
@@ -107,7 +108,7 @@ get_any_brick(const char *conffile, const char *section)
     const struct kfs_brick_api *brick_api = NULL;
     char *brickpath = NULL;
     struct kfs_loadbrick_priv *priv = NULL;
-    struct kfs_subvolume *subvolume = NULL;
+    struct kfs_brick *subvolume = NULL;
     char *subvolume_name = NULL;
     uint_t i = 0;
     void *dynhandle = NULL;
@@ -173,6 +174,7 @@ get_any_brick(const char *conffile, const char *section)
             subvolume = &(priv->subvolumes[i]);
             subvolume->oper = priv->child_nodes[i]->brick_api->getfuncs();
             subvolume->private_data = priv->child_nodes[i]->private_data;
+            subvolume->name = kfs_strcpy(subvolume_name);
             priv->num_subvolumes += 1;
             /* Name of the next subvolume. */
             subvolume_name = strtok_r(NULL, ",", &strtokcontext);

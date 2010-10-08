@@ -48,7 +48,7 @@
  * Perform file operation, after setting proper state. Example usage:
  *
  * int
- * somefunc(struct kfs_subvolume subv, kfs_context_t co)
+ * somefunc(struct kfs_brick subv, kfs_context_t co)
  * {
  *   int ret;
  *
