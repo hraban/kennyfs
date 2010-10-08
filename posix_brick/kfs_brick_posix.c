@@ -16,7 +16,19 @@
 /* <attr/xattr.h> needs this header. silly xattr.h. */
 #include <sys/types.h>
 
-#include <attr/xattr.h>
+#ifdef __APPLE__
+#  include <sys/xattr.h>
+#  define lgetxattr(p, n, v, s) \
+    getxattr((p), (n), (v), (s), 0, XATTR_NOFOLLOW)
+#  define lsetxattr(p, n, v, s, f) \
+    setxattr((p), (n), (v), (s), 0, (f) | XATTR_NOFOLLOW)
+#  define llistxattr(p, l, s) \
+    listxattr((p), (l), (s), XATTR_NOFOLLOW)
+#  define lremovexattr(p, n) \
+    removexattr((p), (n), XATTR_NOFOLLOW)
+#else
+#  include <attr/xattr.h>
+#endif
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
