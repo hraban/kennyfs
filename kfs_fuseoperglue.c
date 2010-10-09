@@ -601,8 +601,7 @@ static const struct fuse_operations fuse_oper = {
 #if FUSE_VERSION >= 28
     .ioctl = root_ioctl,
     .poll = root_poll,
-    /* All KennyFS bricks must support NULL paths. */
-    .flag_nullpath_ok = 1,
+    .flag_nullpath_ok = 0,
 #endif
 };
 
