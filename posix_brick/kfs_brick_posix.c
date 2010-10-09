@@ -76,6 +76,7 @@ posix_getattr(const kfs_context_t co, const char *fusepath, struct stat *stbuf)
 
     KFS_ENTER();
 
+    KFS_ASSERT(fusepath[0] == '/');
     fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
@@ -99,6 +100,7 @@ posix_access(const kfs_context_t co, const char *fusepath, int mask)
 
     KFS_ENTER();
 
+    KFS_ASSERT(fusepath[0] == '/');
     fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
@@ -123,6 +125,7 @@ posix_create(const kfs_context_t co, const char *fusepath, mode_t mode, struct
 
     KFS_ENTER();
 
+    KFS_ASSERT(fusepath[0] == '/');
     ret = 0;
     fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
@@ -142,16 +145,17 @@ posix_create(const kfs_context_t co, const char *fusepath, mode_t mode, struct
 
 
 static int
-posix_ftruncate(const kfs_context_t co, const char *path, off_t off, struct
+posix_ftruncate(const kfs_context_t co, const char *fusepath, off_t off, struct
         fuse_file_info *fi)
 {
     (void) co;
-    (void) path;
+    KFS_NASSERT((void) fusepath);
 
     int ret = 0;
 
     KFS_ENTER();
 
+    KFS_ASSERT(fusepath[0] == '/');
     ret = ftruncate(fi->fh, off);
     if (ret == -1) {
         KFS_RETURN(-errno);
@@ -161,16 +165,17 @@ posix_ftruncate(const kfs_context_t co, const char *path, off_t off, struct
 }
 
 static int
-posix_fgetattr(const kfs_context_t co, const char *path, struct stat *stbuf,
+posix_fgetattr(const kfs_context_t co, const char *fusepath, struct stat *stbuf,
         struct fuse_file_info *fi)
 {
     (void) co;
-    (void) path;
+    KFS_NASSERT((void) fusepath);
 
     int ret = 0;
 
     KFS_ENTER();
 
+    KFS_ASSERT(fusepath[0] == '/');
     ret = fstat(fi->fh, stbuf);
     if (ret == -1) {
         KFS_RETURN(-errno);
@@ -193,7 +198,7 @@ posix_readlink(const kfs_context_t co, const char *fusepath, char *buf, size_t
 
     KFS_ENTER();
 
-    ret = 0;
+    KFS_ASSERT(fusepath[0] == '/');
     fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
@@ -222,6 +227,7 @@ posix_mknod(const kfs_context_t co, const char *fusepath, mode_t mode, dev_t
 
     KFS_ENTER();
 
+    KFS_ASSERT(fusepath[0] == '/');
     fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         ret = -errno;
@@ -246,6 +252,7 @@ posix_truncate(const kfs_context_t co, const char *fusepath, off_t offset)
 
     KFS_ENTER();
 
+    KFS_ASSERT(fusepath[0] == '/');
     fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
@@ -270,7 +277,7 @@ posix_open(const kfs_context_t co, const char *fusepath, struct fuse_file_info
 
     KFS_ENTER();
 
-    ret = 0;
+    KFS_ASSERT(fusepath[0] == '/');
     fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
@@ -297,7 +304,7 @@ posix_unlink(const kfs_context_t co, const char *fusepath)
 
     KFS_ENTER();
 
-    ret = 0;
+    KFS_ASSERT(fusepath[0] == '/');
     fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
@@ -321,6 +328,7 @@ posix_rmdir(const kfs_context_t co, const char *fusepath)
 
     KFS_ENTER();
 
+    KFS_ASSERT(fusepath[0] == '/');
     fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
@@ -347,6 +355,7 @@ posix_symlink(const kfs_context_t co, const char *path1, const char *path2)
 
     KFS_ENTER();
 
+    KFS_ASSERT(path2[0] == '/');
     fullpath = kfs_bufstrcat(pathbuf, mountroot, path2, NUMELEM(pathbuf));
     ret = symlink(path1, fullpath);
     if (ret == -1) {
@@ -369,6 +378,7 @@ posix_rename(const kfs_context_t co, const char *from, const char *to)
 
     KFS_ENTER();
 
+    KFS_ASSERT(from[0] == '/' && to[0] == '/');
     fullpath_from = kfs_bufstrcat(pathbuf_from, mountroot, from,
             NUMELEM(pathbuf_from));
     fullpath_to = kfs_bufstrcat(pathbuf_to, mountroot, to,
@@ -395,6 +405,7 @@ posix_link(const kfs_context_t co, const char *from, const char *to)
 
     KFS_ENTER();
 
+    KFS_ASSERT(from[0] == '/' && to[0] == '/');
     fullpath_from = kfs_bufstrcat(pathbuf_from, mountroot, from,
             NUMELEM(pathbuf_from));
     fullpath_to = kfs_bufstrcat(pathbuf_to, mountroot, to,
@@ -419,6 +430,7 @@ posix_chmod(const kfs_context_t co, const char *fusepath, mode_t mode)
 
     KFS_ENTER();
 
+    KFS_ASSERT(fusepath[0] == '/');
     fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
@@ -442,6 +454,7 @@ posix_chown(const kfs_context_t co, const char *fusepath, uid_t uid, gid_t gid)
 
     KFS_ENTER();
 
+    KFS_ASSERT(fusepath[0] == '/');
     fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
@@ -465,12 +478,13 @@ posix_read(const kfs_context_t co, const char *fusepath, char *buf, size_t size,
         off_t offset, struct fuse_file_info *fi)
 {
     (void) co;
-    (void) fusepath;
+    KFS_NASSERT((void) fusepath);
 
     int ret = 0;
 
     KFS_ENTER();
 
+    KFS_ASSERT(fusepath[0] == '/');
     ret = pread(fi->fh, buf, size, offset);
     if (ret == -1) {
         ret = -errno;
@@ -488,12 +502,13 @@ posix_write(const kfs_context_t co, const char *fusepath, const char *buf,
         struct fuse_file_info *fi)
 {
     (void) co;
-    (void) fusepath;
+    KFS_NASSERT((void) fusepath);
 
     int ret = 0;
 
     KFS_ENTER();
 
+    KFS_ASSERT(fusepath[0] == '/');
     ret = pwrite(fi->fh, buf, size, offset);
     if (ret == -1) {
         KFS_RETURN(-errno);
@@ -503,18 +518,27 @@ posix_write(const kfs_context_t co, const char *fusepath, const char *buf,
 }
 
 static int
-posix_statfs(const kfs_context_t co, const char *path, struct statvfs *buf)
+posix_statfs(const kfs_context_t co, const char *fusepath, struct statvfs *buf)
 {
     (void) co;
 
+    const char * const mountroot = co->priv;
+    char pathbuf[PATHBUF_SIZE];
+    char *fullpath = NULL;
     int ret = 0;
 
     KFS_ENTER();
 
-    ret = statvfs(path, buf);
-    if (ret == -1) {
+    KFS_ASSERT(fusepath[0] == '/');
+    fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
+    if (fullpath == NULL) {
         KFS_RETURN(-errno);
     }
+    ret = statvfs(fullpath, buf);
+    if (ret == -1) {
+        ret = -errno;
+    }
+    fullpath = KFS_BUFSTRFREE(fullpath, pathbuf);
 
     KFS_RETURN(0);
 }
@@ -526,15 +550,17 @@ posix_statfs(const kfs_context_t co, const char *path, struct statvfs *buf)
  * data).
  */
 static int
-posix_flush(const kfs_context_t co, const char *path, struct fuse_file_info *fi)
+posix_flush(const kfs_context_t co, const char *fusepath, struct fuse_file_info
+        *fi)
 {
     (void) co;
-    (void) path;
+    KFS_NASSERT((void) path);
 
     int ret = 0;
 
     KFS_ENTER();
 
+    KFS_ASSERT(fusepath[0] == '/');
     /** This is a POSIX equivalent to flushing data to a OS without closing. */
     ret = dup(fi->fh);
     if (ret != -1) {
@@ -548,16 +574,17 @@ posix_flush(const kfs_context_t co, const char *path, struct fuse_file_info *fi)
 }
 
 static int
-posix_release(const kfs_context_t co, const char *path, struct fuse_file_info
+posix_release(const kfs_context_t co, const char *fusepath, struct fuse_file_info
         *fi)
 {
     (void) co;
-    (void) path;
+    KFS_NASSERT((void) fusepath);
 
     int ret = 0;
 
     KFS_ENTER();
 
+    KFS_ASSERT(fusepath[0] == '/');
     ret = close(fi->fh);
     if (ret == -1) {
         KFS_RETURN(-errno);
@@ -571,15 +598,16 @@ posix_fsync(const kfs_context_t co, const char *fusepath, int datasync, struct
         fuse_file_info *fi)
 {
     (void) co;
-    (void) fusepath;
 #ifndef KFS_USE_FDATASYNC
     (void) datasync;
 #endif
+    KFS_NASSERT((void) fusepath);
 
     int ret = 0;
 
     KFS_ENTER();
 
+    KFS_ASSERT(fusepath[0] == '/');
 #ifdef KFS_USE_FDATASYNC
     if (datasync) {
         ret = fdatasync(fi->fh);
@@ -612,7 +640,7 @@ posix_setxattr(const kfs_context_t co, const char *fusepath, const char *name,
 
     KFS_ENTER();
 
-    ret = 0;
+    KFS_ASSERT(fusepath[0] == '/');
     fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
@@ -637,6 +665,7 @@ posix_getxattr(const kfs_context_t co, const char *fusepath, const char *name,
 
     KFS_ENTER();
 
+    KFS_ASSERT(fusepath[0] == '/');
     fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
@@ -661,6 +690,7 @@ posix_listxattr(const kfs_context_t co, const char *fusepath, char *list, size_t
 
     KFS_ENTER();
 
+    KFS_ASSERT(fusepath[0] == '/');
     fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
@@ -685,6 +715,7 @@ posix_removexattr(const kfs_context_t co, const char *fusepath, const char
 
     KFS_ENTER();
 
+    KFS_ASSERT(fusepath[0] == '/');
     fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         ret = -errno;
@@ -712,6 +743,7 @@ posix_mkdir(const kfs_context_t co, const char *fusepath, mode_t mode)
 
     KFS_ENTER();
 
+    KFS_ASSERT(fusepath[0] == '/');
     fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
@@ -737,6 +769,7 @@ posix_opendir(const kfs_context_t co, const char *fusepath, struct
 
     KFS_ENTER();
 
+    KFS_ASSERT(fusepath[0] == '/');
     fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
@@ -761,7 +794,7 @@ posix_readdir(const kfs_context_t co, const char *fusepath, void *buf,
         fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
 {
     (void) co;
-    (void) fusepath;
+    KFS_NASSERT((void) fusepath);
 
     struct stat stbuf;
     struct stat *stbufp = NULL;
@@ -771,6 +804,7 @@ posix_readdir(const kfs_context_t co, const char *fusepath, void *buf,
 
     KFS_ENTER();
 
+    KFS_ASSERT(fusepath[0] == '/');
     memcpy(&dir, &fi->fh, sizeof(dir));
     seekdir(dir, offset);
     for (;;) {
@@ -804,13 +838,14 @@ posix_releasedir(const kfs_context_t co, const char *fusepath, struct
         fuse_file_info *fi)
 {
     (void) co;
-    (void) fusepath;
+    KFS_NASSERT((void) fusepath);
 
     DIR *dir = NULL;
     int ret = 0;
 
     KFS_ENTER();
 
+    KFS_ASSERT(fusepath[0] == '/');
     memcpy(&dir, &fi->fh, sizeof(dir));
     ret = closedir(dir);
     if (ret == -1) {
@@ -835,7 +870,7 @@ posix_utimens(const kfs_context_t co, const char *fusepath, const struct
 
     KFS_ENTER();
 
-    ret = 0;
+    KFS_ASSERT(fusepath[0] == '/');
     fullpath = kfs_bufstrcat(pathbuf, mountroot, fusepath, NUMELEM(pathbuf));
     if (fullpath == NULL) {
         KFS_RETURN(-errno);
