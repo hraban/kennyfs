@@ -42,6 +42,8 @@ root_getattr(const char *p, struct stat *s)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->getattr(&co, p, s);
 
@@ -56,6 +58,8 @@ root_readlink(const char *p, char *b, size_t s)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->readlink(&co, p, b, s);
 
@@ -70,6 +74,8 @@ root_mknod(const char *p, mode_t m, dev_t d)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->mknod(&co, p, m, d);
 
@@ -84,6 +90,8 @@ root_mkdir(const char *p, mode_t m)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->mkdir(&co, p, m);
 
@@ -98,6 +106,8 @@ root_unlink(const char *p)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->unlink(&co, p);
 
@@ -112,6 +122,8 @@ root_rmdir(const char *p)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->rmdir(&co, p);
 
@@ -126,6 +138,8 @@ root_symlink(const char *p1, const char *p2)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p1 != NULL && p2 != NULL);
+    KFS_ASSERT(p2[0] == '/');
     kfs_init_context(&co);
     r = oper->symlink(&co, p1, p2);
 
@@ -140,6 +154,8 @@ root_rename(const char *p1, const char *p2)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p1 != NULL && p2 != NULL);
+    KFS_ASSERT(p1[0] == '/' && p2[0] == '/');
     kfs_init_context(&co);
     r = oper->rename(&co, p1, p2);
 
@@ -154,6 +170,8 @@ root_link(const char *p1, const char *p2)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p1 != NULL && p2 != NULL);
+    KFS_ASSERT(p1[0] == '/' && p2[0] == '/');
     kfs_init_context(&co);
     r = oper->link(&co, p1, p2);
 
@@ -168,6 +186,8 @@ root_chmod(const char *p, mode_t m)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->chmod(&co, p, m);
 
@@ -182,6 +202,8 @@ root_chown(const char *p, uid_t u, gid_t g)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->chown(&co, p, u, g);
 
@@ -196,6 +218,8 @@ root_truncate(const char *p, off_t o)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->truncate(&co, p, o);
 
@@ -210,6 +234,8 @@ root_open(const char *p, struct fuse_file_info *f)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->open(&co, p, f);
 
@@ -224,6 +250,8 @@ root_read(const char *p, char *b, size_t s, off_t o, struct fuse_file_info *f)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->read(&co, p, b, s, o, f);
 
@@ -239,6 +267,8 @@ root_write(const char *p, const char *b, size_t s, off_t o, struct
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->write(&co, p, b, s, o, f);
 
@@ -253,6 +283,8 @@ root_statfs(const char *p, struct statvfs *s)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->statfs(&co, p, s);
 
@@ -267,6 +299,8 @@ root_flush(const char *p, struct fuse_file_info *f)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->flush(&co, p, f);
 
@@ -281,6 +315,8 @@ root_release(const char *p, struct fuse_file_info *f)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->release(&co, p, f);
 
@@ -295,6 +331,8 @@ root_fsync(const char *p, int i, struct fuse_file_info *f)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->fsync(&co, p, i, f);
 
@@ -310,6 +348,8 @@ root_setxattr(const char *p, const char *k, const char *v, size_t s,
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->setxattr(&co, p, k, v, s, i);
 
@@ -324,6 +364,8 @@ root_getxattr(const char *p, const char *k, char *b, size_t s)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->getxattr(&co, p, k, b, s);
 
@@ -338,6 +380,8 @@ root_listxattr(const char *p, char *b, size_t s)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->listxattr(&co, p, b, s);
 
@@ -352,6 +396,8 @@ root_removexattr(const char *p, const char *k)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->removexattr(&co, p, k);
 
@@ -366,6 +412,8 @@ root_opendir(const char *p, struct fuse_file_info *f)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->opendir(&co, p, f);
 
@@ -381,6 +429,8 @@ root_readdir(const char *p, void *b, fuse_fill_dir_t f, off_t o, struct
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->readdir(&co, p, b, f, o, fi);
 
@@ -395,6 +445,8 @@ root_releasedir(const char *p, struct fuse_file_info *f)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->releasedir(&co, p, f);
 
@@ -409,6 +461,8 @@ root_fsyncdir(const char *p, int i, struct fuse_file_info *f)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->fsyncdir(&co, p, i, f);
 
@@ -423,6 +477,8 @@ root_access(const char *p, int i)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->access(&co, p, i);
 
@@ -437,6 +493,8 @@ root_create(const char *p, mode_t m, struct fuse_file_info *f)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->create(&co, p, m, f);
 
@@ -451,6 +509,8 @@ root_ftruncate(const char *p, off_t o, struct fuse_file_info *f)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->ftruncate(&co, p, o, f);
 
@@ -465,6 +525,8 @@ root_fgetattr(const char *p, struct stat *s, struct fuse_file_info *f)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->fgetattr(&co, p, s, f);
 
@@ -479,6 +541,8 @@ root_lock(const char *p, struct fuse_file_info *f, int i, struct flock *l)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->lock(&co, p, f, i, l);
 
@@ -493,6 +557,8 @@ root_utimens(const char *p, const struct timespec t[2])
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->utimens(&co, p, t);
 
@@ -507,6 +573,8 @@ root_bmap(const char *p, size_t s, uint64_t *i)
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->bmap(&co, p, s, i);
 
@@ -523,6 +591,8 @@ root_ioctl(const char *p, int i, void *v, struct fuse_file_info *f, uint_t u,
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->ioctl(&co, p, i, v, f, u, d);
 
@@ -538,6 +608,8 @@ root_poll(const char *p, struct fuse_file_info *f, struct fuse_pollhandle *h,
 
     KFS_ENTER();
 
+    KFS_ASSERT(p != NULL);
+    KFS_ASSERT(p[0] == '/');
     kfs_init_context(&co);
     r = oper->poll(&co, p, f, h, u);
 
