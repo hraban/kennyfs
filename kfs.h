@@ -34,6 +34,10 @@
 #define PATHBUF_SIZE 256
 /** Prefix to all extended attributes used by kennyfs. */
 #define KFS_XATTR_NS "user.com.kennyfs"
+/** All permission bits. */
+#define PERM7777 (S_IRWXU | S_IRWXG | S_IRWXO | S_ISUID | S_ISGID | S_ISVTX)
+#define PERM0600 (S_IRUSR | S_IWUSR)
+#define PERM0700 (S_IRUSR | S_IWUSR | S_IXUSR)
 
 #ifndef htonll
 #  ifdef _BIG_ENDIAN

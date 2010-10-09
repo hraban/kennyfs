@@ -57,12 +57,6 @@ struct dirfh_switch {
     enum fh_type type;
 };
 
-/** All permission bits. */
-static const mode_t PERMISSION_BITS = S_IRWXU | S_IRWXG | S_IRWXO |
-                                      S_ISUID | S_ISGID | S_ISVTX;
-static const mode_t PERM0600 = S_IRUSR | S_IWUSR;
-static const mode_t PERM0700 = S_IRUSR | S_IWUSR | S_IXUSR;
-
 /**
  * Create a node of given mode on the cache, optionally using orig to look up
  * necessary data (symlink target). Properly handles different types of nodes
