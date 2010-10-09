@@ -34,14 +34,16 @@ struct readdir_context {
     fuse_fill_dir_t filler;
     /** Original buffer. */
     void *buf;
-    /** Set to 1 if any failure occured while caching (ie do not trust cache) */
-    uint_t failure;
     /** The source brick. */
     struct kfs_brick *orig_brick;
     /** The target (caching) brick. */
     struct kfs_brick *cache_brick;
     /** The context used by those bricks. */
     kfs_context_t kfs_context;
+    /** The pathname of this directory. */
+    const char *dirpath;
+    /** Set to 1 if any failure occured while caching (ie do not trust cache) */
+    uint_t failure;
 };
 
 enum fh_type {
@@ -60,7 +62,8 @@ struct dirfh_switch {
 /**
  * Create a node of given mode on the cache, optionally using orig to look up
  * necessary data (symlink target). Properly handles different types of nodes
- * (dir, symlink, regular, etc).
+ * (dir, symlink, regular, etc). The permission bits of the new node are always
+ * set to 0600 (0700 for directories).
  */
 static int
 versatile_mknod(struct kfs_brick *orig, struct kfs_brick *cache, const
@@ -76,8 +79,10 @@ versatile_mknod(struct kfs_brick *orig, struct kfs_brick *cache, const
 
     KFS_ENTER();
 
+    /* Overwrite permission bits to 0600. */
+    mode = (mode & ~PERM7777) | PERM0600;
     if (S_ISDIR(mode)) {
-        KFS_DO_OPER(ret = , cache, mkdir, co, path, mode);
+        KFS_DO_OPER(ret = , cache, mkdir, co, path, mode | S_IXUSR);
     } else if (S_ISLNK(mode)) {
         /* cache_readlink will cache the symlink. */
         charbuf = KFS_MALLOC(bufsize);
@@ -164,7 +169,7 @@ cache_getattr(const kfs_context_t co, const char *path, struct stat *stbuf)
         break;
     case -ENOENT:
         /* The file does not exist. Create it and wait for next getattr call. */
-        mode = (stbuf->st_mode & S_IFMT) | S_IRWXU;
+        mode = stbuf->st_mode & S_IFMT;
         ret = versatile_mknod(subv, cache, co, path, mode);
         if (ret != 0) {
             KFS_INFO("Error while caching metadata.");
@@ -686,15 +691,28 @@ cache_readdir_filler(void *buf, const char *name, const struct stat *stbuf,
 {
     struct readdir_context * const rd_co = buf;
     int ret = 0;
+    char *fullpath = NULL;
 
     KFS_ENTER();
 
     ret = rd_co->filler(rd_co->buf, name, stbuf, offset);
     if (ret == 0) {
-        ret = versatile_mknod(rd_co->orig_brick, rd_co->cache_brick,
-                rd_co->kfs_context, name, (stbuf->st_mode & S_IFMT) | S_IRWXU);
-        if (ret == -1) {
+        /* NOTE: If this is/becomes a bottleneck, here are some optimisations:
+         * - Use one buffer, only realloc if too small.
+         * - Put dirname + '/' in there once, only update entry name.
+         *
+         * TODO: check if it is a bottleneck.
+         */
+        fullpath = kfs_sprintf("%s/%s", rd_co->dirpath, name);
+        if (fullpath == NULL) {
             rd_co->failure = 1;
+        } else {
+            ret = versatile_mknod(rd_co->orig_brick, rd_co->cache_brick,
+                    rd_co->kfs_context, fullpath, (stbuf->st_mode & S_IFMT));
+            fullpath = KFS_FREE(fullpath);
+            if (ret == -1) {
+                rd_co->failure = 1;
+            }
         }
     } else {
         /* Buffer is full. */
@@ -745,6 +763,7 @@ cache_readdir(const kfs_context_t co, const char *path, void *buf,
     rd_context.orig_brick = subv;
     rd_context.cache_brick = cache;
     rd_context.kfs_context = co;
+    rd_context.dirpath = path;
     KFS_DO_OPER(ret = , subv, readdir, co, path, &rd_context,
             cache_readdir_filler, offset, fi);
     if (ret == 0 && rd_context.failure == 0) {
