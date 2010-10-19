@@ -136,7 +136,7 @@ kfs_sprintf(const char *fmt, ...)
 {
     char *buf = NULL;
     char *newbuf = NULL;
-    size_t buflen = 100; /* Guess at maximum needed buflen. */
+    size_t buflen = 255; /* Guess at maximum needed buflen (smallbin). */
     int ret = 0;
     va_list ap;
 
@@ -158,8 +158,8 @@ kfs_sprintf(const char *fmt, ...)
         }
         /* Reallocation allowed only once. */
         KFS_ASSERT(newbuf == NULL);
-        newbuf = KFS_REALLOC(buf, buflen);
         buflen = ret + 1;
+        newbuf = KFS_REALLOC(buf, buflen);
         if (newbuf == NULL) {
             buf = KFS_FREE(buf);
             KFS_RETURN(NULL);
