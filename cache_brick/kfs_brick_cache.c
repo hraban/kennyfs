@@ -171,12 +171,12 @@ cache_getattr(const kfs_context_t co, const char *path, struct stat *stbuf)
         /* The file does not exist. Create it and wait for next getattr call. */
         mode = stbuf->st_mode & S_IFMT;
         ret = versatile_mknod(subv, cache, co, path, mode);
-        if (ret != 0) {
-            KFS_INFO("Error while caching metadata.");
+        if (ret == 0) {
+            break;
         }
-        break;
     default:
-        KFS_INFO("Error while caching metadata: %s.", strerror(-ret));
+        KFS_INFO("Error while caching metadata of %s: %s.", path,
+                strerror(-ret));
         break;
     }
 
