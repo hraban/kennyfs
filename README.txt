@@ -59,11 +59,8 @@ subvolumes option. The type option is the only mandatory one.
 
   [mybrick]
   type = sometype
-  subvolumes = brick1,brick2
+  subvolumes = brick1, brick2
   some_option = some_value
-
-(Notice that for the moment you can not have spaces around the commas in the
-subvolumes option.)
 
 The available brick types are:
 

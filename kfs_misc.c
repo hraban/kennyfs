@@ -171,6 +171,33 @@ kfs_sprintf(const char *fmt, ...)
 }
 
 /**
+ * Strip the spaces from both ends of a string.
+ *
+ * Finds all consecutive spaces at the end of the string and replaces the first
+ * one by a null-byte. Returns a pointer to the first character since the
+ * argument that is not a space (including the argument itself).
+ */
+char *
+kfs_stripspaces(char *buf, size_t len)
+{
+    char *p = NULL;
+
+    KFS_ENTER();
+
+    KFS_ASSERT(buf != NULL);
+    p = buf + len - 1;
+    while (p >= buf && *p == ' ') {
+        *p = '\0';
+        p--;
+    }
+    while (buf < p && *buf == ' ') {
+        buf++;
+    }
+    
+    KFS_RETURN(buf);
+}
+
+/**
  * Extract a key from the configuration file into a freshly allocated buffer.
  * Returns NULL if there is no such key (or no such section or configuration
  * file, or no memory, etc), returns a pointer to the buffer on success. This

@@ -163,6 +163,8 @@ get_any_brick(const char *conffile, const char *section)
             KFS_RETURN(NULL);
         }
         for (i = 0; i < MAX_SUBVOLUMES; i++) {
+            subvolume_name = kfs_stripspaces(subvolume_name,
+                                                    strlen(subvolume_name));
             KFS_DEBUG("Create subvolume nr %u for brick %s: `%s'.", i + 1,
                     section, subvolume_name);
             priv->child_nodes[i] = get_any_brick(conffile, subvolume_name);
