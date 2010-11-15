@@ -683,7 +683,7 @@ extract_dirent(char *resbuf, void *fusebuf, fuse_fill_dir_t filler)
     ret = filler(fusebuf, buf, &stbuf, offset);
     buf += namelen;
     /* Entry terminator. */
-    KFS_ASSERT(*buf == '\0'); // Implied by previous strlen() assertion
+    KFS_ASSERT(*buf == '\0'); /* Implied by previous strlen() assertion. */
     if (ret != 0) {
         KFS_RETURN(0);
     }
@@ -709,6 +709,10 @@ tcpc_readdir(const kfs_context_t co, const char *path, void *fusebuf,
 
     KFS_ENTER();
 
+    /*
+     * TODO: This is horrible; the length is right there in the TCP header, it
+     * should be used to do a /proper/ malloc instead of this shotgun.
+     */
     resbuf = KFS_MALLOC(READDIR_BUFSIZE);
     if (resbuf == NULL) {
         KFS_RETURN(-ENOMEM);

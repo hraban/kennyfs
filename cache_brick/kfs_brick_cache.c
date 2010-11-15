@@ -776,7 +776,8 @@ cache_readdir(const kfs_context_t co, const char *path, void *buf,
 }
 
 static int
-cache_releasedir(const kfs_context_t co, const char *path, struct fuse_file_info *fi)
+cache_releasedir(const kfs_context_t co, const char *path, struct fuse_file_info
+        *fi)
 {
     struct kfs_brick * const subv = co->priv;
     struct kfs_brick * const cache = subv + 1;
