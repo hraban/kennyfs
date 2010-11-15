@@ -96,3 +96,15 @@ kfs_rwlock_destroy(kfs_rwlock_t *lock)
 
     KFS_RETURN();
 }
+
+kfs_threadid_t
+kfs_getthreadid(void)
+{
+    pthread_t id;
+
+    KFS_ENTER();
+
+    id = pthread_self();
+
+    KFS_RETURN(id);
+}
