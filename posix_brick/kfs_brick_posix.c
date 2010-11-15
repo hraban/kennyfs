@@ -554,7 +554,7 @@ posix_flush(const kfs_context_t co, const char *fusepath, struct fuse_file_info
         *fi)
 {
     (void) co;
-    KFS_NASSERT((void) path);
+    KFS_NASSERT((void) fusepath);
 
     int ret = 0;
 
