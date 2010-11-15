@@ -839,6 +839,46 @@ mirror_open(const kfs_context_t co, const char *path, struct fuse_file_info *fi)
 }
 
 static int
+mirror_mkdir(const kfs_context_t co, const char *path, mode_t mode)
+{
+    struct mirror_state * const state = co->priv;
+    struct kfs_brick *subv = NULL;
+    uint_t *ids = NULL;
+    uint_t id = 0;
+    uint_t i = 0;
+    uint_t n = 0;
+    int tmp = 0;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    ret = -ENOSUBVOLS;
+    n = get_all_active_subvols(state, &ids);
+    for (i = 0; i < n; i++) {
+        id = ids[i];
+        subv = C_get_subvol_by_ID(state, id);
+        KFS_DO_OPER(ret = , subv, mkdir, co, path, mode);
+        if (ret != 0) {
+            /* An error occurred: try to rollback. */
+            while (i--) {
+                id = ids[i];
+                subv = C_get_subvol_by_ID(state, id);
+                KFS_DO_OPER(tmp = , subv, rmdir, co, path);
+                if (tmp != 0) {
+                    KFS_ERROR("While trying to roll back a failed mkdir "
+                        "operation by deleting it: could not delete `%s' from "
+                        "node `%s': %s", path, subv->name, strerror(-tmp));
+                    eject_subvolume(state, id);
+                }
+            }
+            break;
+        }
+    }
+    ids = KFS_FREE(ids);
+
+    KFS_RETURN(ret);
+}
+static int
 mirror_unlink(const kfs_context_t co, const char *path)
 {
     struct mirror_state * const state = co->priv;
@@ -1041,9 +1081,9 @@ mirror_chmod(const kfs_context_t co, const char *path, mode_t mode)
 {
     struct mirror_state * const state = co->priv;
     struct kfs_brick *subv = NULL;
-    struct stat stbuf;
     /** Backup of the mode in case of rollback (if possible). */
     struct {
+        struct stat stbuf;
         mode_t mode;
         uint_t valid;
     } backup = {.mode = 0, .valid = 0};
@@ -1058,9 +1098,9 @@ mirror_chmod(const kfs_context_t co, const char *path, mode_t mode)
     KFS_ENTER();
 
     /* Backup old mode. */
-    ret = mirror_getattr(co, path, &stbuf);
+    ret = mirror_getattr(co, path, &backup.stbuf);
     if (ret == 0) {
-        backup.mode = stbuf.st_mode & PERM7777;
+        backup.mode = backup.stbuf.st_mode & PERM7777;
         backup.valid = 1;
     } else {
         backup.valid = 0;
@@ -1795,11 +1835,95 @@ mirror_releasedir(const kfs_context_t co, const char *path, struct
     KFS_RETURN(ret);
 }
 
+/**
+ * Update access and modification time.
+ *
+ * If some brick fails to do this, the others where it did work are rolled back
+ * by restoring the modification time. The access time, however, will be
+ * not be restored to its original (because the API does not allow this).
+ *
+ * Also notice that precision could be lost in the backup process: while the API
+ * allows setting nanosecond precision, it only allows fetching with any
+ * precision that the `time_t' datatype allows.
+ */
+static int
+mirror_utimens(const kfs_context_t co, const char *path, const struct timespec
+        tvnano[2])
+{
+    struct mirror_state * const state = co->priv;
+    struct kfs_brick *subv = NULL;
+    struct {
+        struct stat stbuf;
+        time_t mtime;
+        uint_t valid;
+        struct timespec tvnano[2];
+    } backup = {.mtime = 0, .valid = 0};
+    uint_t *ids = NULL;
+    uint_t id = 0;
+    uint_t i = 0;
+    uint_t n = 0;
+    uint_t one_success = 0;
+    int ret = 0;
+    int tmp = 0;
+
+    KFS_ENTER();
+
+    /* Backup mtime. */
+    ret = mirror_getattr(co, path, &backup.stbuf);
+    if (ret == 0) {
+        backup.mtime = backup.stbuf.st_mtime;
+        backup.valid = 1;
+    } else {
+        backup.valid = 0;
+    }
+    /* Perform time change on all subvols. */
+    ret = -ENOSUBVOLS;
+    n = get_all_active_subvols(state, &ids);
+    for (i = 0; i < n; i++) {
+        id = ids[i];
+        subv = C_get_subvol_by_ID(state, id);
+        KFS_DO_OPER(ret = , subv, utimens, co, path, tvnano);
+        if (ret == 0) {
+            one_success = 1;
+        } else if (one_success && backup.valid == 0) {
+            /* No possibility to rollback: eject this node and continue. */
+            KFS_ERROR("Changing a/mtime of `%s' failed midway at node `%s': "
+                "%s. Was unable to backup old mtime; rollback impossible, "
+                "continuing with operation.",
+                path, subv->name, strerror(-errno));
+            eject_subvolume(state, id);
+            ret = 0;
+        } else {
+            /* Rollback succesful subvolumes and abort operation. */
+            backup.tvnano[0].tv_sec = backup.mtime;
+            /* Hope it's typedef float. */
+            backup.tvnano[0].tv_nsec = backup.mtime % 1;
+            backup.tvnano[1].tv_sec = backup.mtime;
+            backup.tvnano[1].tv_nsec = backup.mtime % 1;
+            while (i--) {
+                id = ids[i];
+                subv = C_get_subvol_by_ID(state, id);
+                KFS_DO_OPER(tmp = , subv, utimens, co, path, backup.tvnano);
+                if (tmp != 0) {
+                    KFS_ERROR("While trying to roll back a failed `utimens' "
+                        "operation by reverting it: failed on `%s' from "
+                        "node `%s': %s", path, subv->name, strerror(-tmp));
+                    eject_subvolume(state, id);
+                }
+            }
+            break;
+        }
+    }
+    ids = KFS_FREE(ids);
+
+    KFS_RETURN(ret);
+}
+
 static const struct kfs_operations handlers = {
     .getattr = mirror_getattr,
     .readlink = mirror_readlink,
     .mknod = mirror_mknod,
-    .mkdir = nosys_mkdir,
+    .mkdir = mirror_mkdir,
     .unlink = mirror_unlink,
     .rmdir = mirror_rmdir,
     .symlink = mirror_symlink,
@@ -1828,7 +1952,7 @@ static const struct kfs_operations handlers = {
     .ftruncate = nosys_ftruncate,
     .fgetattr = nosys_fgetattr,
     .lock = mirror_lock,
-    .utimens = nosys_utimens,
+    .utimens = mirror_utimens,
     .bmap = nosys_bmap,
 #if FUSE_VERSION >= 28
     .ioctl = nosys_ioctl,
