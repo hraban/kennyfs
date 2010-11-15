@@ -4,8 +4,9 @@ FSLINK ?= ln -fs
 NAME ?= server
 CFLAGS += -fPIC -I..
 CCINCARGS :=
-LINKARGS := `pkg-config fuse --libs` $(wildcard ../kfs_*.o) ../minini/minini.o
-OFILES := server.o handlers.o
+LINKARGS := `pkg-config fuse --libs`
+DEPENDENCIES :=  $(wildcard ../kfs_*.o) ../minini/minini.o
+OFILES := $(patsubst %.c,%.o,$(wildcard *.c))
 
 FULLCC := $(CC) $(CFLAGS) $(CCINCARGS)
 FULLLINK := $(LINKER) $(LINKARGS)
@@ -15,10 +16,10 @@ FULLLINK := $(LINKER) $(LINKARGS)
 all: $(NAME)
 
 clean:
-	rm -f $(NAME) *.o lib*.so.?.? lib*.so.? lib*.so
+	rm -f $(NAME) $(OFILES)
 
 $(NAME): $(OFILES)
-	$(FULLLINK) -o $@ $(OFILES)
+	$(FULLLINK) $(DEPENDENCIES) $(OFILES) -o $@
 
-%.o: %.c
-	$(FULLCC) -c $*.c -o $@
+%.o: %.c %.h
+	$(FULLCC) -c $< -o $@

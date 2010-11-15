@@ -3,7 +3,8 @@ LINKER ?= $(CC)
 FSLINK ?= ln -fs
 CFLAGS += -fPIC -I..
 CCINCARGS :=
-LINKARGS := `pkg-config fuse --libs` $(wildcard ../kfs_*.o) -pthread ../minini/minini.o
+LINKARGS := `pkg-config fuse --libs`
+DEPENDENCIES :=  $(wildcard ../kfs_*.o) ../minini/minini.o
 BRICKS := $(wildcard kfs_brick_*.c)
 OFILES := $(patsubst %.c,%.o,$(filter-out $(BRICKS),$(wildcard *.c)))
 SOFILES := $(patsubst %.c,lib%.so,$(BRICKS))
@@ -18,10 +19,10 @@ all: $(SOFILES)
 clean:
 	rm -f *.o lib*.so*
 
-lib%.so: %.o $(OFILES)
-	$(FULLLINK) -shared -Wl,-soname,$@.0 $< -o $@.0.0 $(OFILES)
+lib%.so: %.o $(OFILES) $(DEPENDENCIES)
+	$(FULLLINK) $(DEPENDENCIES) -shared -Wl,-soname,$@.0 $< -o $@.0.0 $(OFILES)
 	$(FSLINK) $@.0.0 $@.0
 	$(FSLINK) $@.0.0 $@
 
-%.o: %.c
+%.o: %.c %.h
 	$(FULLCC) -c $*.c -o $@
