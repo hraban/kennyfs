@@ -300,6 +300,11 @@ struct mirror_fh {
 #endif
 };
 
+struct mirror_dirfh {
+    struct kfs_brick *subv;
+    uint64_t fh;
+};
+
 /** Error returned when no subvolumes are available. */
 static const int ENOSUBVOLS = ECHILD;
 
@@ -429,24 +434,32 @@ get_all_active_subvols(struct mirror_state * const state, uint_t **buf)
 /**
  * No-hassle subvolume getter: just get one, any, active subvolume for reading.
  *
- * Returns a pointer to the subvolume on success, NULL on error.
+ * Returns a pointer to the subvolume on success, NULL on error. If the idp
+ * argument is not NULL, the id of the subvolume is stored in it on succesful
+ * return.
  */
 static struct kfs_brick *
-get_one_reader(struct mirror_state * const state)
+get_one_reader(struct mirror_state * const state, uint_t *idp)
 {
     struct kfs_brick *brick = NULL;
+    uint_t *my_idp = NULL;
     uint_t id = 0;
     uint_t n = 0;
 
     KFS_ENTER();
 
-    n = get_some_active_subvols(state, &id, 1);
+    if (idp == NULL) {
+        my_idp = &id;
+    } else {
+        my_idp = idp;
+    }
+    n = get_some_active_subvols(state, my_idp, 1);
     if (n == 0) {
         brick = NULL;
     } else {
         KFS_ASSERT(n == 1);
-        KFS_ASSERT(id <= C_get_num_subvols(state));
-        brick = C_get_subvol_by_ID(state, id);
+        KFS_ASSERT(*my_idp <= C_get_num_subvols(state));
+        brick = C_get_subvol_by_ID(state, *my_idp);
     }
 
     KFS_RETURN(brick);
@@ -610,7 +623,7 @@ mirror_getattr(const kfs_context_t co, const char *path, struct stat *stbuf)
 
     KFS_ENTER();
 
-    subv = get_one_reader(state);
+    subv = get_one_reader(state, NULL);
     if (subv == NULL) {
         KFS_RETURN(-ENOSUBVOLS);
     }
@@ -629,7 +642,7 @@ mirror_readlink(const kfs_context_t co, const char *path, char *buf, size_t
 
     KFS_ENTER();
 
-    subv = get_one_reader(state);
+    subv = get_one_reader(state, NULL);
     if (subv == NULL) {
         KFS_RETURN(-ENOSUBVOLS);
     }
@@ -758,15 +771,12 @@ mirror_open(const kfs_context_t co, const char *path, struct fuse_file_info *fi)
         if (my_fh == NULL) {
             KFS_RETURN(-ENOMEM);
         }
-        n = get_some_active_subvols(state, &id, 1);
-        if (n == 0) {
+        subv = get_one_reader(state, &(my_fh->subvols_id[0]));
+        if (subv == NULL) {
             /* No more readers available. */
             my_fh = del_fh(my_fh);
             KFS_RETURN(-ENOSUBVOLS);
         }
-        KFS_ASSERT(n == 1);
-        my_fh->subvols_id[0] = id;
-        subv = C_get_subvol_by_ID(state, id);
         KFS_DO_OPER(ret = , subv, open, co, path, fi);
         /* TODO: Try other subvolumes on failure. */
         if (ret != 0) {
@@ -1357,7 +1367,7 @@ mirror_statfs(const kfs_context_t co, const char *path, struct statvfs *stbuf)
 
     KFS_ENTER();
 
-    subv = get_one_reader(state);
+    subv = get_one_reader(state, NULL);
     if (subv == NULL) {
         KFS_RETURN(-ENOSUBVOLS);
     }
@@ -1535,7 +1545,7 @@ mirror_getxattr(const kfs_context_t co, const char *path, const char *name, char
 
     KFS_ENTER();
 
-    subv = get_one_reader(state);
+    subv = get_one_reader(state, NULL);
     if (subv == NULL) {
         KFS_RETURN(-ENOSUBVOLS);
     }
@@ -1700,6 +1710,91 @@ mirror_setxattr(const kfs_context_t co, const char *path, const char *name,
     KFS_RETURN(ret);
 }
 
+/**
+ * Open a directory session.
+ *
+ * These are only used for readdir so only one subvolume is opened. TODO:
+ * Opendir on multiple subvolumes for fallback in case readdir fails for the
+ * first one.
+ */
+static int
+mirror_opendir(const kfs_context_t co, const char *path, struct fuse_file_info
+        *fi)
+{
+    struct mirror_state * const state = co->priv;
+    struct mirror_dirfh *my_dirfh = NULL;
+    struct kfs_brick *subv = NULL;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    /* Read-only requires just one subvolume. */
+    my_dirfh = KFS_MALLOC(sizeof(*my_dirfh));
+    if (my_dirfh == NULL) {
+        KFS_RETURN(-ENOMEM);
+    }
+    subv = get_one_reader(state, NULL);
+    if (subv == NULL) {
+        my_dirfh = KFS_FREE(my_dirfh);
+        KFS_RETURN(-ENOSUBVOLS);
+    }
+    KFS_DO_OPER(ret = , subv, opendir, co, path, fi);
+    if (ret != 0) {
+        my_dirfh = KFS_FREE(my_dirfh);
+    } else {
+        /* Store the filehandle returned by the subvolume. */
+        my_dirfh->fh = fi->fh;
+        my_dirfh->subv = subv;
+        KFS_ASSERT(sizeof(my_dirfh) <= sizeof(fi->fh));
+        /* Return the filehandle of this brick to the caller. */
+        memcpy(&fi->fh, &my_dirfh, sizeof(my_dirfh));
+    }
+
+    KFS_RETURN(ret);
+}
+
+static int
+mirror_readdir(const kfs_context_t co, const char *path, void *buf,
+        fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
+{
+    struct mirror_dirfh *my_dirfh = NULL;
+    struct kfs_brick *subv = NULL;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    memcpy(&my_dirfh, &fi->fh, sizeof(my_dirfh));
+    KFS_ASSERT(my_dirfh != NULL);
+    subv = my_dirfh->subv;
+    fi->fh = my_dirfh->fh;
+    KFS_DO_OPER(ret = , subv, readdir, co, path, buf, filler, offset, fi);
+
+    KFS_RETURN(ret);
+}
+
+static int
+mirror_releasedir(const kfs_context_t co, const char *path, struct
+        fuse_file_info *fi)
+{
+    struct mirror_dirfh *my_dirfh = NULL;
+    struct kfs_brick *subv = NULL;
+    int ret = 0;
+
+    KFS_ENTER();
+
+    memcpy(&my_dirfh, &fi->fh, sizeof(my_dirfh));
+    KFS_ASSERT(my_dirfh != NULL);
+    subv = my_dirfh->subv;
+    fi->fh = my_dirfh->fh;
+    KFS_DO_OPER(ret = , subv, releasedir, co, path, fi);
+    /* Only delete the resources if closing was succesful. */
+    if (ret == 0) {
+        my_dirfh = KFS_FREE(my_dirfh);
+    }
+
+    KFS_RETURN(ret);
+}
+
 static const struct kfs_operations handlers = {
     .getattr = mirror_getattr,
     .readlink = mirror_readlink,
@@ -1724,9 +1819,9 @@ static const struct kfs_operations handlers = {
     .getxattr = mirror_getxattr,
     .listxattr = nosys_listxattr,
     .removexattr = nosys_removexattr,
-    .opendir = nosys_opendir,
-    .readdir = nosys_readdir,
-    .releasedir = nosys_releasedir,
+    .opendir = mirror_opendir,
+    .readdir = mirror_readdir,
+    .releasedir = mirror_releasedir,
     .fsyncdir = nosys_fsyncdir,
     .access = nosys_access,
     .create = nosys_create,
