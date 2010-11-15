@@ -12,6 +12,8 @@
 
 #define NUMELEM(ar) (sizeof(ar) / sizeof((ar)[0]))
 #define KFS_SLEEP(n) kfs_sleep(n)
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
 
 inline int min(int x, int y);
 inline int max(int x, int y);

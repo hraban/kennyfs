@@ -73,7 +73,7 @@ kenny_init(const char *conffile, const char *section, size_t num_subvolumes,
     }
 
     /* Any non-NULL value indicates success, and context is not yet used. */
-    KFS_RETURN(kenny_init);
+    KFS_RETURN("foo");
 }
 
 /**

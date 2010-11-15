@@ -2,6 +2,10 @@
 #define KENNYFS_H
 
 #include <assert.h>
+/* Needed for abort(). */
+#include <stdlib.h>
+
+#include "kfs_logging.h"
 
 #define KFS_VERSION "0.0"
 
@@ -16,7 +20,6 @@
 #ifdef KFS_LOG_TRACE
 #  if defined(__GNUC__) || \
       defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
-#    include "kfs_logging.h"
 #    undef KFS_ENTER
 #    undef KFS_RETURN
      /* Function name is already printed by kfs_log in trace mode. */
@@ -72,13 +75,15 @@
  * with ret.
  */
 #define KFS_DO_OPER(ret, brick, op, co, ...) \
-    do { \
+    do { void *_KFS_backup = (co)->priv; \
         (co)->priv = (brick)->private_data; \
         ret (brick)->oper->op(co, ## __VA_ARGS__); \
+        (co)->priv = _KFS_backup; \
     } while (0)
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 
+#define KFS_ABORT(x) do {kfs_log("CRITICAL", x); abort(); } while (0)
 #define KFS_ASSERT assert
 /* KFS_NASSERT is executed verbatim in NON-debugging mode. */
 #ifdef NDEBUG
