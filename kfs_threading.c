@@ -9,65 +9,90 @@
 
 #include "kfs_threading.h"
 
+#include <string.h>
 #include <pthread.h>
 
 #include "kfs_logging.h"
 
-inline void
+/**
+ * Abort operation if given return value is not 0.
+ */
+static inline void
+work_or_die(int ret)
+{
+    if (ret != 0) {
+        KFS_ABORT("Encountered unrecoverable threading error: %s.\n",
+                strerror(ret));
+    }
+
+    return;
+}
+
+void
 kfs_rwlock_readlock(kfs_rwlock_t *lock)
 {
     int ret = 0;
 
+    KFS_ENTER();
+
     KFS_ASSERT(lock != NULL);
     ret = pthread_rwlock_rdlock(lock);
-    KFS_ASSERT(ret == 0);
+    work_or_die(ret);
 
-    return;
+    KFS_RETURN();
 }
 
-inline void
+void
 kfs_rwlock_writelock(kfs_rwlock_t *lock)
 {
     int ret = 0;
 
+    KFS_ENTER();
+
     KFS_ASSERT(lock != NULL);
     ret = pthread_rwlock_wrlock(lock);
-    KFS_ASSERT(ret == 0);
+    work_or_die(ret);
 
-    return;
+    KFS_RETURN();
 }
 
-inline void
+void
 kfs_rwlock_unlock(kfs_rwlock_t *lock)
 {
     int ret = 0;
 
+    KFS_ENTER();
+
     KFS_ASSERT(lock != NULL);
     ret = pthread_rwlock_unlock(lock);
-    KFS_ASSERT(ret == 0);
+    work_or_die(ret);
 
-    return;
+    KFS_RETURN();
 }
 
-inline int
+int
 kfs_rwlock_init(kfs_rwlock_t *lock)
 {
     int ret = 0;
 
+    KFS_ENTER();
+
     KFS_ASSERT(lock != NULL);
     ret = pthread_rwlock_init(lock, NULL);
 
-    return ret;
+    KFS_RETURN(ret);
 }
 
-inline void
+void
 kfs_rwlock_destroy(kfs_rwlock_t *lock)
 {
     int ret = 0;
 
+    KFS_ENTER();
+
     KFS_ASSERT(lock != NULL);
     ret = pthread_rwlock_destroy(lock);
-    KFS_ASSERT(ret == 0);
+    work_or_die(ret);
 
-    return;
+    KFS_RETURN();
 }

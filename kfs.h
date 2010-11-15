@@ -83,7 +83,9 @@
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 
-#define KFS_ABORT(x) do {kfs_log("CRITICAL", x); abort(); } while (0)
+#define KFS_ABORT(...) do { \
+        kfs_log("CRITICAL", __VA_ARGS__); abort(); \
+    } while (0)
 #define KFS_ASSERT assert
 /* KFS_NASSERT is executed verbatim in NON-debugging mode. */
 #ifdef NDEBUG

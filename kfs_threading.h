@@ -7,11 +7,11 @@
 
 typedef pthread_rwlock_t kfs_rwlock_t;
 
-inline void kfs_rwlock_readlock(kfs_rwlock_t *lock);
-inline void kfs_rwlock_writelock(kfs_rwlock_t *lock);
-inline void kfs_rwlock_unlock(kfs_rwlock_t *lock);
-inline int kfs_rwlock_init(kfs_rwlock_t *lock);
-inline void kfs_rwlock_destroy(kfs_rwlock_t *lock);
+void kfs_rwlock_readlock(kfs_rwlock_t *lock);
+void kfs_rwlock_writelock(kfs_rwlock_t *lock);
+void kfs_rwlock_unlock(kfs_rwlock_t *lock);
+int kfs_rwlock_init(kfs_rwlock_t *lock);
+void kfs_rwlock_destroy(kfs_rwlock_t *lock);
 /* TODO: kfs_rwlock_islocked()? */
 
 #endif
