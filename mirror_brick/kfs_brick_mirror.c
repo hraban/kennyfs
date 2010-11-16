@@ -1842,9 +1842,8 @@ mirror_releasedir(const kfs_context_t co, const char *path, struct
  * by restoring the modification time. The access time, however, will be
  * not be restored to its original (because the API does not allow this).
  *
- * Also notice that precision could be lost in the backup process: while the API
- * allows setting nanosecond precision, it only allows fetching with any
- * precision that the `time_t' datatype allows.
+ * Also notice that on rollback the time is rounded down to an integer: no
+ * sub-second precision.
  */
 static int
 mirror_utimens(const kfs_context_t co, const char *path, const struct timespec
@@ -1896,10 +1895,9 @@ mirror_utimens(const kfs_context_t co, const char *path, const struct timespec
         } else {
             /* Rollback succesful subvolumes and abort operation. */
             backup.tvnano[0].tv_sec = backup.mtime;
-            /* Hope it's typedef float. */
-            backup.tvnano[0].tv_nsec = backup.mtime % 1;
+            backup.tvnano[0].tv_nsec = 0;
             backup.tvnano[1].tv_sec = backup.mtime;
-            backup.tvnano[1].tv_nsec = backup.mtime % 1;
+            backup.tvnano[1].tv_nsec = 0;
             while (i--) {
                 id = ids[i];
                 subv = C_get_subvol_by_ID(state, id);
