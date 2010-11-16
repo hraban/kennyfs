@@ -2,7 +2,12 @@ CC ?= gcc
 LINKER ?= $(CC)
 FSLINK ?= ln -fs
 NAME ?= kennyfs
-export CFLAGS += -Wall -g -Wunused-parameter `pkg-config fuse --cflags` -O3
+export CFLAGS += -Wall -g -Wunused-parameter `pkg-config fuse --cflags`
+ifdef KFS_O
+export CFLAGS += -O$(KFS_O)
+else
+export CFLAGS += -O3
+endif
 CCINCARGS :=
 LINKARGS := `pkg-config fuse --libs`
 BRICKS := $(patsubst %_brick/,%,$(wildcard *_brick/))

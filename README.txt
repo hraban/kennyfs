@@ -39,13 +39,37 @@ To build the entire package, just run:
 
   $ make
 
+Two binaries will be created: ./kennyfs and ./tcp_server/server.
+
+There are three specific build variables you may want to influence: log
+verbosity, optimisations and self-checking ("assert").
+
+Log Verbosity:
+
 To build it with additional debugging:
 
   $ CFLAGS=-DKFS_LOG_<LEVEL> make
 
-Where <LEVEL> is one of SILENT, ERROR, WARNING, INFO, DEBUG, TRACE.
+Where <LEVEL> is one of SILENT, ERROR, WARNING, INFO, DEBUG, TRACE. DEBUG is the
+default (or WARNING, depending on self-checking). You will only see this output
+if you run kennyfs with the -d flag.
 
-Two binaries will be created: ./kennyfs and ./tcp_server/server.
+Optimisations:
+
+By default, full optimisations (level 3) are turned on. This can be influenced
+with the KFS_O variable:
+
+  $ KFS_O=1 make
+
+Use 0 to turn them off completely.
+
+Self-checking:
+
+Several parts of the code are dedicated to checking if nothing weird is going
+on (unexpected bugs). They should never fail, if they do the program is wrong
+and will be terminated. If you trust the code you can turm them off:
+
+  $ CFLAGS=-DNDEBUG make
 
 
 == Configuration ==
