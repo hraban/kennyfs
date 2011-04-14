@@ -1719,6 +1719,7 @@ mirror_setxattr(const kfs_context_t co, const char *path, const char *name,
                     KFS_ERROR("Could not rollback extended attribute `%s' for "
                               "`%s' on node `%s' after error: %s. Deactivate.",
                               name, path, subv->name, strerror(-tmp));
+                    eject_subvolume(state, id);
                 }
             }
             break;
