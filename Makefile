@@ -8,8 +8,8 @@ export CFLAGS += -O$(KFS_O)
 else
 export CFLAGS += -O3
 endif
-CCINCARGS :=
-LINKARGS := `pkg-config fuse --libs`
+CCINCARGS := -rdynamic
+LINKARGS := `pkg-config fuse --libs` -rdynamic
 BRICKS := $(patsubst %_brick/,%,$(wildcard *_brick/))
 CLEANBRICKS := $(patsubst %,%_clean,$(BRICKS))
 OFILES := $(patsubst %.c,%.o,$(wildcard kfs_*.c)) minini/minini.o

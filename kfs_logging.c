@@ -1,10 +1,11 @@
+#include "kfs_logging.h"
+
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/time.h>
 
 #include "kfs.h"
-#include "kfs_logging.h"
 
 enum kfs_loglevel kfs_loglevel = KFS_LOGLVL_WARNING;
 

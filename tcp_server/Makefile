@@ -2,9 +2,9 @@ CC ?= gcc
 LINKER ?= $(CC)
 FSLINK ?= ln -fs
 NAME ?= server
-CFLAGS += -fPIC -I..
-CCINCARGS :=
-LINKARGS := `pkg-config fuse --libs`
+CFLAGS += -I..
+CCINCARGS := -rdynamic
+LINKARGS := `pkg-config fuse --libs` -rdynamic
 DEPENDENCIES :=  $(wildcard ../kfs_*.o) ../minini/minini.o
 OFILES := $(patsubst %.c,%.o,$(wildcard *.c))
 
