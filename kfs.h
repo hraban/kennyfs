@@ -14,21 +14,6 @@
 #  define inline
 #endif
 
-/* TODO: This could use some nice indenting to represent the call depth. */
-#define KFS_ENTER() ((void) (0))
-#define KFS_RETURN(ret) return ret
-#ifdef KFS_LOG_TRACE
-#  if defined(__GNUC__) || \
-      defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
-#    undef KFS_ENTER
-#    undef KFS_RETURN
-     /* Function name is already printed by kfs_log in trace mode. */
-#    define KFS_ENTER() kfs_log("trace", "enter")
-#    define KFS_RETURN(ret) do { kfs_log("trace", "return"); return ret; \
-                               } while (0)
-#  endif
-#endif
-
 /**
  * Many functions use this macro in allocating a buffer on the stack to build a
  * full pathname. When it is exceeded more memory is automatically allocated on
@@ -51,6 +36,7 @@
 #    define ntohll(x) ((((uint64_t)ntohl(x)) << 32) + ntohl((x) >> 32))
 #  endif
 #endif
+
 /**
  * Perform file operation, after setting proper state. Example usage:
  *
@@ -80,11 +66,12 @@
         ret (brick)->oper->op(co, ## __VA_ARGS__); \
         (co)->priv = _KFS_backup; \
     } while (0)
+
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 
 #define KFS_ABORT(...) do { \
-        kfs_log("CRITICAL", __VA_ARGS__); abort(); \
+        KFS_LOGWRAP(KFS_LOGLVL_CRITICAL, __VA_ARGS__); abort(); \
     } while (0)
 #define KFS_ASSERT assert
 /* KFS_NASSERT is executed verbatim in NON-debugging mode. */

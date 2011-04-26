@@ -25,11 +25,13 @@
  */
 struct kenny_conf {
     char *kfsconf;
+    enum kfs_loglevel loglvl;
 };
 
 enum {
     KEY_HELP,
     KEY_VERSION,
+    KEY_DEBUG,
 };
 
 /**
@@ -37,9 +39,17 @@ enum {
  */
 static struct fuse_opt kenny_opts[] = {
     KENNYFS_OPT("kfsconf=%s", kfsconf, 0),
+    KENNYFS_OPT("kfslog=silent", loglvl, KFS_LOGLVL_SILENT),
+    KENNYFS_OPT("kfslog=trace", loglvl, KFS_LOGLVL_TRACE),
+    KENNYFS_OPT("kfslog=debug", loglvl, KFS_LOGLVL_DEBUG),
+    KENNYFS_OPT("kfslog=info", loglvl, KFS_LOGLVL_INFO),
+    KENNYFS_OPT("kfslog=warning", loglvl, KFS_LOGLVL_WARNING),
+    KENNYFS_OPT("kfslog=error", loglvl, KFS_LOGLVL_ERROR),
+    KENNYFS_OPT("kfslog=critical", loglvl, KFS_LOGLVL_CRITICAL),
+
     FUSE_OPT_KEY("-h", KEY_HELP),
     FUSE_OPT_KEY("--help", KEY_HELP),
-    FUSE_OPT_KEY("-v", KEY_VERSION),
+    FUSE_OPT_KEY("-V", KEY_VERSION),
     FUSE_OPT_KEY("--version", KEY_VERSION),
     FUSE_OPT_END
 };
@@ -55,8 +65,10 @@ void *lib_handle = NULL;
 static int
 kenny_opt_proc(void *data, const char *arg, int key, struct fuse_args *outargs)
 {
-    (void) data;
     (void) arg;
+
+    //struct kenny_conf *conf = data;
+    (void) data;
 
     switch(key) {
     case KEY_VERSION:
@@ -64,7 +76,7 @@ kenny_opt_proc(void *data, const char *arg, int key, struct fuse_args *outargs)
         fuse_opt_add_arg(outargs, "--version");
         fuse_main(outargs->argc, outargs->argv, NULL, NULL);
         exit(EXIT_SUCCESS);
-
+        break;
     case KEY_HELP:
         fprintf(stderr,
                 "usage: %s mountpoint [options]\n"
@@ -73,14 +85,18 @@ kenny_opt_proc(void *data, const char *arg, int key, struct fuse_args *outargs)
                 "    -o opt,[opt...]  mount options\n"
                 "    -h   --help      print help\n"
                 "    -V   --version   print version\n"
+                "    -d   --debug     go into debugging mode\n"
                 "\n"
                 "KennyFS options:\n"
                 "    -o kfsconf=PATH  configuration file\n"
+                "    -o kfslog=LVL    logging level (silent, trace, debug, "
+                                      "info, warning, error, critical)\n"
                 "\n",
                 outargs->argv[0]);
         fuse_opt_add_arg(outargs, "-ho");
         fuse_main(outargs->argc, outargs->argv, NULL, NULL);
         exit(EXIT_SUCCESS);
+        break;
     }
 
     return 1;
@@ -95,7 +111,10 @@ main_(int argc, char *argv[])
 {
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
     const struct fuse_operations *fuse_oper = NULL;
-    struct kenny_conf conf;
+    struct kenny_conf conf = {
+        .kfsconf = NULL,
+        .loglvl = KFS_LOGLVL_WARNING,
+    };
     struct kfs_loadbrick brick;
     int ret = 0;
     const char *kfsconf = NULL;
@@ -104,7 +123,6 @@ main_(int argc, char *argv[])
 
     KFS_INFO("Starting KennyFS version %s.", KFS_VERSION);
     /* Parse the command line. */
-    memset(&conf, 0, sizeof(conf));
     ret = fuse_opt_parse(&args, &conf, kenny_opts, kenny_opt_proc);
     if (ret == -1) {
         KFS_ERROR("Parsing options failed.");
@@ -115,6 +133,7 @@ main_(int argc, char *argv[])
     } else {
         kfsconf = KFSCONF_DEFAULT_PATH;
     }
+    kfs_loglevel = conf.loglvl;
     ret = get_root_brick(kfsconf, &brick);
     if (ret == -1) {
         fuse_opt_free_args(&args);

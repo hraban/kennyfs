@@ -44,17 +44,34 @@ Two binaries will be created: ./kennyfs and ./tcp_server/server.
 There are three specific build variables you may want to influence: log
 verbosity, optimisations and self-checking ("assert").
 
-Log Verbosity:
+=== Self-checking ===
 
-To build it with additional debugging:
+Several parts of the code are dedicated to checking if nothing weird is going
+on (unexpected bugs). They should never fail, if they do the program is wrong
+and will be terminated. If you trust the code you can turm them off:
 
-  $ CFLAGS=-DKFS_LOG_<LEVEL> make
+  $ CFLAGS=-DNDEBUG make
 
-Where <LEVEL> is one of SILENT, ERROR, WARNING, INFO, DEBUG, TRACE. DEBUG is the
-default (or WARNING, depending on self-checking). You will only see this output
-if you run kennyfs with the -d flag.
+This also disables some debugging capabilities and should in general only be
+used if resources are dire.
 
-Optimisations:
+=== Log Verbosity ===
+
+Maximum logging support (tracing function calls) is enabled at compile-time by
+default. This allows full run-time flexibility, at the cost of some overhead: a
+fine trade-off in most situations.
+
+To disable support up to a certain loggin level entirely, define the
+corresponding KFS_MINLOG_<LEVEL> constant. This will leave out log messages
+lower than that level at compile time, resulting in a smaller (and hopefully
+faster) resulting binary:
+
+  $ CFLAGS=-DKFS_MINLOG_<LEVEL> make
+
+Where <LEVEL> is one of SILENT, ERROR, WARNING, INFO, DEBUG, TRACE. The default
+is TRACE (or WARNING, if -DNDEBUG is specified).
+
+=== Optimisations ===
 
 By default, full optimisations (level 3) are turned on. This can be influenced
 with the KFS_O variable:
@@ -62,14 +79,6 @@ with the KFS_O variable:
   $ KFS_O=1 make
 
 Use 0 to turn them off completely.
-
-Self-checking:
-
-Several parts of the code are dedicated to checking if nothing weird is going
-on (unexpected bugs). They should never fail, if they do the program is wrong
-and will be terminated. If you trust the code you can turm them off:
-
-  $ CFLAGS=-DNDEBUG make
 
 
 == Configuration ==
