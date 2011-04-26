@@ -73,7 +73,7 @@ kenny_init(const char *conffile, const char *section, size_t num_subvolumes,
     }
 
     /* Any non-NULL value indicates success, and context is not yet used. */
-    KFS_RETURN("foo");
+    KFS_RETURN(hostname);
 }
 
 /**
@@ -87,7 +87,7 @@ kenny_halt(void *private_data)
     KFS_ENTER();
 
     /* As returned by init() (only for the sake of this assert). */
-    KFS_ASSERT(private_data == kenny_init);
+    KFS_ASSERT(private_data == hostname);
     /** TODO: Close connection and handlers. */
 
     KFS_RETURN();
