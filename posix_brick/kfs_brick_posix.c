@@ -149,13 +149,12 @@ posix_ftruncate(const kfs_context_t co, const char *fusepath, off_t off, struct
         fuse_file_info *fi)
 {
     (void) co;
-    KFS_NASSERT((void) fusepath);
+    (void) fusepath;
 
     int ret = 0;
 
     KFS_ENTER();
 
-    KFS_ASSERT(fusepath[0] == '/');
     ret = ftruncate(fi->fh, off);
     if (ret == -1) {
         KFS_RETURN(-errno);
@@ -169,13 +168,12 @@ posix_fgetattr(const kfs_context_t co, const char *fusepath, struct stat *stbuf,
         struct fuse_file_info *fi)
 {
     (void) co;
-    KFS_NASSERT((void) fusepath);
+    (void) fusepath;
 
     int ret = 0;
 
     KFS_ENTER();
 
-    KFS_ASSERT(fusepath[0] == '/');
     ret = fstat(fi->fh, stbuf);
     if (ret == -1) {
         KFS_RETURN(-errno);
@@ -478,13 +476,12 @@ posix_read(const kfs_context_t co, const char *fusepath, char *buf, size_t size,
         off_t offset, struct fuse_file_info *fi)
 {
     (void) co;
-    KFS_NASSERT((void) fusepath);
+    (void) fusepath;
 
     int ret = 0;
 
     KFS_ENTER();
 
-    KFS_ASSERT(fusepath[0] == '/');
     ret = pread(fi->fh, buf, size, offset);
     if (ret == -1) {
         ret = -errno;
@@ -502,13 +499,12 @@ posix_write(const kfs_context_t co, const char *fusepath, const char *buf,
         struct fuse_file_info *fi)
 {
     (void) co;
-    KFS_NASSERT((void) fusepath);
+    (void) fusepath;
 
     int ret = 0;
 
     KFS_ENTER();
 
-    KFS_ASSERT(fusepath[0] == '/');
     ret = pwrite(fi->fh, buf, size, offset);
     if (ret == -1) {
         KFS_RETURN(-errno);
@@ -554,13 +550,12 @@ posix_flush(const kfs_context_t co, const char *fusepath, struct fuse_file_info
         *fi)
 {
     (void) co;
-    KFS_NASSERT((void) fusepath);
+    (void) fusepath;
 
     int ret = 0;
 
     KFS_ENTER();
 
-    KFS_ASSERT(fusepath[0] == '/');
     /** This is a POSIX equivalent to flushing data to a OS without closing. */
     ret = dup(fi->fh);
     if (ret != -1) {
@@ -578,13 +573,12 @@ posix_release(const kfs_context_t co, const char *fusepath, struct fuse_file_inf
         *fi)
 {
     (void) co;
-    KFS_NASSERT((void) fusepath);
+    (void) fusepath;
 
     int ret = 0;
 
     KFS_ENTER();
 
-    KFS_ASSERT(fusepath[0] == '/');
     ret = close(fi->fh);
     if (ret == -1) {
         KFS_RETURN(-errno);
@@ -601,13 +595,12 @@ posix_fsync(const kfs_context_t co, const char *fusepath, int datasync, struct
 #ifndef KFS_USE_FDATASYNC
     (void) datasync;
 #endif
-    KFS_NASSERT((void) fusepath);
+    (void) fusepath;
 
     int ret = 0;
 
     KFS_ENTER();
 
-    KFS_ASSERT(fusepath[0] == '/');
 #ifdef KFS_USE_FDATASYNC
     if (datasync) {
         ret = fdatasync(fi->fh);
@@ -794,7 +787,7 @@ posix_readdir(const kfs_context_t co, const char *fusepath, void *buf,
         fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
 {
     (void) co;
-    KFS_NASSERT((void) fusepath);
+    (void) fusepath;
 
     struct stat stbuf;
     struct stat *stbufp = NULL;
@@ -804,7 +797,6 @@ posix_readdir(const kfs_context_t co, const char *fusepath, void *buf,
 
     KFS_ENTER();
 
-    KFS_ASSERT(fusepath[0] == '/');
     memcpy(&dir, &fi->fh, sizeof(dir));
     seekdir(dir, offset);
     for (;;) {
@@ -838,14 +830,13 @@ posix_releasedir(const kfs_context_t co, const char *fusepath, struct
         fuse_file_info *fi)
 {
     (void) co;
-    KFS_NASSERT((void) fusepath);
+    (void) fusepath;
 
     DIR *dir = NULL;
     int ret = 0;
 
     KFS_ENTER();
 
-    KFS_ASSERT(fusepath[0] == '/');
     memcpy(&dir, &fi->fh, sizeof(dir));
     ret = closedir(dir);
     if (ret == -1) {
