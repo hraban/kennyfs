@@ -45,6 +45,7 @@ recoverable_error(int errno_)
     case ETIMEDOUT:
     case EADDRINUSE:
     case ENETDOWN:
+    case EPIPE:
         return 1;
         break;
     default:
